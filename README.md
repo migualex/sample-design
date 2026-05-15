@@ -59,7 +59,7 @@ Informe usuário, senha e o bioma de trabalho. Caso não tenha conta, clique em 
 - **ESC** → desativa a ferramenta
 
 ---
-LICENÇA:
+The MIT License
 ```
 Copyright (c) 2026 Miguel Alexandre da Cunha
 
