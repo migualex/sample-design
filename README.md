@@ -58,6 +58,8 @@ Informe usuário, senha e o bioma de trabalho. Caso não tenha conta, clique em 
 - **Botão direito** → confirma a amostra (pisca verde)
 - **ESC** → desativa a ferramenta
 
+---
+LICENÇA:
 ```
     This file is part of Sample Design.
     Copyright (C) 2026 INPE.
