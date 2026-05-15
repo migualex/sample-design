@@ -19,7 +19,7 @@
 
 O **Sample Design** é um plugin para QGIS que permite a coleta interativa de amostras, com integração direta ao banco de dados PostgreSQL/PostGIS.
 
-O analista move o cursor sobre a imagem, visualiza em tempo real um quadrado de _preview_ configurável, por exemplo uma janela de 10 × 10 pixels, e confirma a amostra. Os polígonos são salvos automaticamente no banco de dados, permitindo que toda a equipe visualize, em tempo real, as amostras registradas.
+O analista move o cursor sobre a imagem e visualiza um quadrado de _preview_ configurável, por exemplo uma janela de 10 × 10 pixels. Ao confirmar a amostra, os polígonos são salvos automaticamente no banco de dados, permitindo que toda a equipe visualize, em tempo real.
 
 ---
 
