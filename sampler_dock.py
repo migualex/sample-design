@@ -136,6 +136,8 @@ class SamplerDock(QDockWidget):
         self.classes = self.db.get_custom_classes(self.bioma, username)
         self.counts  = {c[0]: 0 for c in self.classes}
         self._populate_combo()
+        is_admin = self.user_info.get('is_admin', False)
+        self.btn_mgr.setVisible(is_admin)
         self._rebuild_counters_grid()
 
         layer, err = self.db.get_postgis_layer(self.bioma, username)
@@ -165,6 +167,7 @@ class SamplerDock(QDockWidget):
         self._rebuild_counters_grid()
         self._new_memory_layer()
         self._log('Modo local ativo.')
+        self.btn_mgr.setVisible(False)
 
     def _logout(self):
         self._refresh_timer.stop()
@@ -339,10 +342,10 @@ class SamplerDock(QDockWidget):
         lc.addWidget(self.combo)
         lc.addWidget(self.cls_color_bar)
 
-        btn_mgr = QPushButton('Gerenciar classes')
-        btn_mgr.setMinimumHeight(26)
-        btn_mgr.clicked.connect(self._open_class_manager)
-        btn_mgr.setStyleSheet(
+        self.btn_mgr = QPushButton('Gerenciar classes')
+        self.btn_mgr.setMinimumHeight(26)
+        self.btn_mgr.clicked.connect(self._open_class_manager)
+        self.btn_mgr.setStyleSheet(
             f'QPushButton {{'
             f'  background:transparent; color:{C_LINK};'
             f'  border:1.5px solid {C_BORDER}; border-radius:7px;'
@@ -350,7 +353,7 @@ class SamplerDock(QDockWidget):
             f'}}'
             f'QPushButton:hover {{ background:#EEF6FB; border-color:{C_STEEL}; }}'
         )
-        lc.addWidget(btn_mgr)
+        lc.addWidget(self.btn_mgr)
         lay.addWidget(grp_cls)
 
         # ── Janela ───────────────────────────────────────────────

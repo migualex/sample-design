@@ -159,6 +159,7 @@ class DBManager:
                     senha_hash   VARCHAR(64)  NOT NULL,
                     bioma_padrao VARCHAR(80),
                     criado_em    TIMESTAMP DEFAULT NOW(),
+                    is_admin BOOLEAN DEFAULT FALSE,
                     ativo        BOOLEAN   DEFAULT TRUE
                 );
             """)
