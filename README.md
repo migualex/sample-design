@@ -4,7 +4,7 @@
 </p>
 
 <p align="center">
-  <strong>Ferramenta interativa de coleta de amostras de uso e cobertura da terra</strong><br/>
+  <strong>Ferramenta interativa para coleta de amostras de uso e cobertura da terra</strong><br/>
 </p>
 
 <p align="center">
