@@ -8,11 +8,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/QGIS-3.22+-green?logo=qgis" />
-  <img src="https://img.shields.io/badge/Python-3.9+-blue?logo=python" />
-  <img src="https://img.shields.io/badge/PostgreSQL-PostGIS-336791?logo=postgresql" />
-  <img src="https://img.shields.io/badge/versão-0.5.0-orange" />
-  <img src="https://img.shields.io/badge/licença-GPL--2.0-lightgrey" />
+  <img src="https://img.shields.io/badge/license-MIT-green" />
+  <img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" />
 </p>
 
 ---
@@ -41,12 +38,6 @@ Clone o repositório e copie a pasta `sample-design` para o diretório de plugin
 git clone https://github.com/migualex/sample-design.git
 ```
 
-| Sistema | Caminho |
-|---|---|
-| Windows | `C:\Users\<usuario>\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\` |
-| Linux | `~/.local/share/QGIS/QGIS3/profiles/default/python/plugins/` |
-| macOS | `~/Library/Application Support/QGIS/QGIS3/profiles/default/python/plugins/` |
-
 ### 3. Ativar no QGIS
 
 **Complementos → Gerenciar e Instalar Complementos → Instalar a partir do ZIP → selecionar arquivo ZIP**
@@ -56,34 +47,31 @@ git clone https://github.com/migualex/sample-design.git
 ## Como usar
 
 ### 1. Abrir o plugin
-Clique no ícone **Sample Design** na barra de ferramentas ou acesse **Plugins → Sample Design**.
+Clique no ícone **Sample Design** na barra de ferramentas.
 
 ### 2. Fazer login
 Informe usuário, senha e o bioma de trabalho. Caso não tenha conta, clique em **Criar conta**.
 
 ### 3. Coletar amostras
 - Selecione a classe no menu suspenso
-- Mova o cursor sobre a imagem — o quadrado de _preview_ aparece em vermelho tracejado
+- Mova o cursor sobre a imagem: o quadrado de _preview_ aparece em vermelho tracejado
 - **Botão direito** → confirma a amostra (pisca verde)
 - **ESC** → desativa a ferramenta
 
----
-
-## Estrutura do Projeto
-
 ```
-sample_design/
-├── __init__.py                # Ponto de entrada do plugin
-├── metadata.txt               # Metadados (QGIS Plugin Manager)
-├── sample_design.py           # Classe principal do plugin
-├── sampler_tool.py            # Ferramenta de mapa (rubber band + coleta)
-├── sampler_dock.py            # Painel lateral principal
-├── login_dialog.py            # Tela de login e cadastro
-├── class_manager_dialog.py    # Gerenciador de classes
-├── db_manager.py              # Toda a lógica PostgreSQL/PostGIS
-├── db_config.py               # Configurações de conexão e classes padrão
-├── setup_banco.sql            # Script SQL de configuração do banco
-└── icons/
-    ├── sample_design_icon.png
-    └── sample_design_icon.svg
+    This file is part of Sample Design.
+    Copyright (C) 2026 INPE.
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program. If not, see <https://www.gnu.org/licenses/gpl-3.0.html>.
 ```
