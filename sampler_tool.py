@@ -1,82 +1,81 @@
 # -*- coding: utf-8 -*-
-from qgis.gui import QgsMapTool, QgsRubberBand
-from qgis.core import (
-    QgsPointXY, QgsGeometry, QgsWkbTypes,
-    QgsCoordinateTransform, QgsCoordinateReferenceSystem, QgsProject
-)
-from qgis.PyQt.QtCore import Qt, QTimer
-from qgis.PyQt.QtGui import QColor, QCursor
 
-PIXEL_SIZE_M = 10.0
+from qgis.core import (
+    QgsGeometry, QgsRectangle, QgsCoordinateTransform,
+    QgsCoordinateReferenceSystem, QgsProject, QgsWkbTypes
+)
+from qgis.gui import QgsMapTool, QgsRubberBand
+from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtGui import QColor
+
+PIXEL_SIZE_M = 10.0   # 10 × 10 m → 100 m²
 
 
 class SamplerTool(QgsMapTool):
 
     def __init__(self, canvas, dock):
         super().__init__(canvas)
-        self.canvas  = canvas
-        self.dock    = dock
-        self.rubber  = None
-        self.current = None
-        self._init_rubber()
-        self.setCursor(QCursor(Qt.CrossCursor))
+        self.canvas = canvas
+        self.dock   = dock
 
-    def _init_rubber(self):
-        if self.rubber:
-            self.rubber.reset()
-        self.rubber = QgsRubberBand(self.canvas, QgsWkbTypes.PolygonGeometry)
-        self._color_idle()
+        self.rubber = QgsRubberBand(canvas, QgsWkbTypes.PolygonGeometry)
+        self.rubber.setColor(QColor(255, 100, 100, 100))
         self.rubber.setWidth(2)
-        self.rubber.setLineStyle(Qt.DashLine)
+        self.rubber.setFillColor(QColor(255, 0, 0, 30))
 
-    def _color_idle(self):
-        self.rubber.setColor(QColor(220, 50, 50, 210))
-        self.rubber.setFillColor(QColor(220, 50, 50, 30))
-
-    def _color_ok(self):
-        self.rubber.setColor(QColor(40, 180, 40, 230))
-        self.rubber.setFillColor(QColor(40, 180, 40, 55))
-
-    def _square_geom(self, center):
-        canvas_crs = self.canvas.mapSettings().destinationCrs()
-        merc = QgsCoordinateReferenceSystem('EPSG:3857')
-        to_merc   = QgsCoordinateTransform(canvas_crs, merc,        QgsProject.instance())
-        to_canvas = QgsCoordinateTransform(merc,        canvas_crs, QgsProject.instance())
-        c    = to_merc.transform(center)
-        half = self.dock.window_size_m() / 2.0
-        x, y = c.x(), c.y()
-        pts  = [
-            QgsPointXY(x - half, y + half),
-            QgsPointXY(x + half, y + half),
-            QgsPointXY(x + half, y - half),
-            QgsPointXY(x - half, y - half),
-        ]
-        corners = [to_canvas.transform(p) for p in pts]
-        return QgsGeometry.fromPolygonXY([corners])
-
-    def canvasMoveEvent(self, event):
-        self.current = self.toMapCoordinates(event.pos())
-        self.rubber.setToGeometry(self._square_geom(self.current), None)
-        self.rubber.show()
-
-    def canvasPressEvent(self, event):
-        if event.button() == Qt.RightButton and self.current:
-            geom = self._square_geom(self.current)
-            if self.dock.save_sample(geom):
-                self._color_ok()
-                self.canvas.update()
-                QTimer.singleShot(280, lambda: (self._color_idle(), self.canvas.update()))
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self.dock.plugin.deactivate_tool()
+    def activate(self):
+        super().activate()
+        self.canvas.setCursor(Qt.CrossCursor)
+        self.dock._log('Ferramenta de coleta ATIVADA – clique no mapa')
 
     def deactivate(self):
-        if self.rubber:
-            self.rubber.reset()
-            self.rubber.hide()
+        self.rubber.reset(QgsWkbTypes.PolygonGeometry)
         super().deactivate()
 
-    def isZoomTool(self):  return False
-    def isTransient(self): return False
-    def isEditTool(self):  return True
+    def canvasMoveEvent(self, event):
+        point = self.toMapCoordinates(event.pos())
+        geom = self._square_geom(point)
+        if geom:
+            self.rubber.setToGeometry(geom, None)
+        else:
+            self.rubber.reset(QgsWkbTypes.PolygonGeometry)
+
+    def canvasReleaseEvent(self, event):
+        if event.button() != Qt.LeftButton:
+            return
+        point = self.toMapCoordinates(event.pos())
+        geom = self._square_geom(point)
+        if geom is None:
+            self.dock._log('Não foi possível criar a geometria – verifique o CRS do mapa')
+            return
+        self.dock._log(f'Salvando polígono em {point}')
+        self.dock.save_sample(geom)
+
+    def _square_geom(self, point):
+        """
+        Build a 10×10 m square in EPSG:4674 centred on the given point.
+        The point is first transformed to EPSG:4674 if needed.
+        """
+        layer_crs = QgsCoordinateReferenceSystem('EPSG:4674')
+        canvas_crs = self.canvas.mapSettings().destinationCrs()
+
+        # Transform point to EPSG:4674
+        if canvas_crs != layer_crs:
+            try:
+                tr = QgsCoordinateTransform(canvas_crs, layer_crs, QgsProject.instance())
+                point = tr.transform(point)
+            except Exception as e:
+                self.dock._log(f'Erro de transformação: {e}')
+                return None
+
+        half_side_metres = (self.dock.pixel_size * PIXEL_SIZE_M) / 2.0
+
+        # Approximate degree conversions
+        half_dx = half_side_metres / 111320.0
+        half_dy = half_side_metres / 110540.0
+
+        x = point.x()
+        y = point.y()
+        rect = QgsRectangle(x - half_dx, y - half_dy,
+                            x + half_dx, y + half_dy)
+        return QgsGeometry.fromRect(rect)

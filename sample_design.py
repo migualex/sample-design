@@ -2,6 +2,7 @@
 import os
 from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
+from qgis.PyQt.QtCore import Qt
 
 from .sampler_tool import SamplerTool
 from .sampler_dock import SamplerDock
@@ -14,7 +15,7 @@ class SampleDesign:
         self.canvas    = iface.mapCanvas()
         self.plugin_dir = os.path.dirname(__file__)
         self.action    = None
-        self.dock      = None
+        self.dock      = None          
         self.tool      = None
         self.prev_tool = None
 
@@ -30,21 +31,25 @@ class SampleDesign:
         self.iface.addPluginToMenu('&Sample Design', self.action)
         self.iface.addToolBarIcon(self.action)
 
-        self.dock = SamplerDock(self.iface, self)
-        self.iface.addDockWidget(0x2, self.dock)
-        self.dock.hide()
-
-        self.tool = SamplerTool(self.canvas, self.dock)
+        # NÃO criamos o dock nem a ferramenta aqui – só quando o ícone for clicado
 
     def toggle_tool(self, checked):
         if checked:
+            # Cria o dock e a ferramenta apenas na primeira ativação
+            if self.dock is None:
+                self.dock = SamplerDock(self.iface, self)
+                self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
+                self.dock.hide()   # oculta inicialmente; será mostrado a seguir
+                self.tool = SamplerTool(self.canvas, self.dock)
+
             self.prev_tool = self.canvas.mapTool()
             self.canvas.setMapTool(self.tool)
             self.dock.show()
         else:
             if self.prev_tool:
                 self.canvas.setMapTool(self.prev_tool)
-            self.dock.hide()
+            if self.dock:
+                self.dock.hide()
 
     def deactivate_tool(self):
         self.action.setChecked(False)

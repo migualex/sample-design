@@ -1,20 +1,8 @@
 # -*- coding: utf-8 -*-
-"""
-db_manager.py — Gerenciador de conexão PostgreSQL/PostGIS.
-
-Responsabilidades:
-  • Conectar ao banco usando psycopg2
-  • Autenticar intérpretes
-  • Criar novos usuários (registro)
-  • Garantir que schemas e tabelas existem
-  • Retornar QgsVectorLayer apontando para a tabela PostGIS do usuário
-  • Listar classes personalizadas do usuário
-  • Salvar/remover classes personalizadas
-"""
 
 import hashlib
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 
 try:
     import psycopg2
@@ -34,12 +22,10 @@ from .db_config import (
 
 
 def _hash_password(password: str) -> str:
-    """SHA-256 simples. Em produção use bcrypt."""
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
 
-def _to_code(label: str) -> str:
-    """Converte nome legível em código sem acento para campo 'label'."""
+def sanitize_text(text: str) -> str:
     replacements = {
         'á':'a','à':'a','ã':'a','â':'a','ä':'a',
         'é':'e','ê':'e','ë':'e','è':'e',
@@ -51,24 +37,47 @@ def _to_code(label: str) -> str:
         'É':'E','Ê':'E','Í':'I','Ó':'O',
         'Ô':'O','Õ':'O','Ú':'U','Ç':'C',
     }
-    r = label
+    r = text
     for k, v in replacements.items():
         r = r.replace(k, v)
-    r = re.sub(r"[^A-Za-z0-9]", '_', r)
+    r = re.sub(r'[^A-Za-z0-9]', '_', r)
     r = re.sub(r'_+', '_', r).strip('_')
     return r
 
 
 class DBManager:
 
-    def __init__(self):
-        self._conn = None      # conexão admin (psycopg2)
+    SCHEMA_MAP = {
+        ('Amazônia', 'Prodes'): {
+            'schema': 'prodes',
+            'table': 'prodes_amz_2026',
+            'tiles': ('public', 'tiles_amz'),
+            'subregioes': None,
+        },
+        ('Amazônia', 'Vegetação Secundária'): {
+            'schema': 'veg_sec',
+            'table': 'vs_amz_2026',
+            'tiles': ('public', 'tiles_amz'),
+            'subregioes': None,
+        },
+        ('Pantanal', 'Prodes'): {
+            'schema': 'prodes',
+            'table': 'prodes_ptn_2026',
+            'tiles': ('public', 'tiles_ptn'),
+            'subregioes': ('public', 'subregioes_ptn'),
+        },
+        ('Pantanal', 'Vegetação Secundária'): {
+            'schema': 'veg_sec',
+            'table': 'vs_ptn_2024',
+            'tiles': ('public', 'tiles_ptn'),
+            'subregioes': ('public', 'subregioes_ptn'),
+        },
+    }
 
-    # ─────────────────────────────────────────────────────────────
-    # Conexão
-    # ─────────────────────────────────────────────────────────────
+    def __init__(self):
+        self._conn = None
+
     def _admin_conn(self):
-        """Conexão administrativa (para criar schemas, tabelas, usuários)."""
         if not PSYCOPG2_OK:
             raise RuntimeError(
                 'A biblioteca psycopg2 não está instalada.\n'
@@ -84,9 +93,8 @@ class DBManager:
         return conn
 
     def test_connection(self):
-        """Testa se o banco está acessível. Retorna (True, '') ou (False, msg)."""
         if not PSYCOPG2_OK:
-            return False, 'psycopg2 não instalado. Execute: pip install psycopg2-binary'
+            return False, 'psycopg2 não instalado.'
         try:
             conn = self._admin_conn()
             conn.close()
@@ -94,72 +102,142 @@ class DBManager:
         except Exception as e:
             return False, str(e)
 
-    # ─────────────────────────────────────────────────────────────
-    # Bootstrap — cria schemas e tabelas necessárias
-    # ─────────────────────────────────────────────────────────────
     def bootstrap(self):
-        """
-        Garante que todos os schemas e tabelas existem.
-        Chamado uma vez na inicialização do plugin (pelo admin).
-        """
         conn = self._admin_conn()
         cur  = conn.cursor()
         try:
-            # Extensão PostGIS
             cur.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
 
-            # Schema e tabelas para cada bioma
-            for bioma, schema in BIOMAS.items():
-                cur.execute(f'CREATE SCHEMA IF NOT EXISTS {schema};')
-
-                # Tabela de amostras por usuário
-                cur.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {schema}.amostras (
-                        gid        SERIAL PRIMARY KEY,
-                        fid        INTEGER,
-                        "class"    VARCHAR(150),
-                        label      VARCHAR(150),
-                        interprete VARCHAR(100),
-                        data_col   TIMESTAMP DEFAULT NOW(),
-                        area_m2    DOUBLE PRECISION,
-                        px_size    INTEGER,
-                        janela_px  INTEGER,
-                        geom       GEOMETRY(Polygon, 4674)
-                    );
-                """)
-                cur.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_{schema}_amostras_geom
-                    ON {schema}.amostras USING GIST(geom);
-                """)
-                cur.execute(f"""
-                    CREATE INDEX IF NOT EXISTS idx_{schema}_amostras_interprete
-                    ON {schema}.amostras(interprete);
-                """)
-
-                # Tabela de classes customizadas por bioma/usuário
-                cur.execute(f"""
-                    CREATE TABLE IF NOT EXISTS {schema}.classes_custom (
-                        id         SERIAL PRIMARY KEY,
-                        interprete VARCHAR(100),
-                        code       VARCHAR(150) NOT NULL,
-                        label      VARCHAR(150) NOT NULL,
-                        color      VARCHAR(10)  DEFAULT '#888888',
-                        ordem      INTEGER      DEFAULT 99,
-                        ativo      BOOLEAN      DEFAULT TRUE,
-                        criado_em  TIMESTAMP    DEFAULT NOW()
-                    );
-                """)
-
-            # Tabela de usuários no schema public
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS public.interpretes (
+                CREATE TABLE IF NOT EXISTS public.biome_config (
+                    bioma     VARCHAR(80) PRIMARY KEY,
+                    max_scale INTEGER DEFAULT 10000
+                );
+            """)
+            for bioma in BIOMAS.keys():
+                cur.execute("""
+                    INSERT INTO public.biome_config (bioma, max_scale)
+                    VALUES (%s, 10000)
+                    ON CONFLICT (bioma) DO NOTHING;
+                """, (bioma,))
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS public.user_biomes (
+                    username   VARCHAR(80) NOT NULL,
+                    biome      VARCHAR(80) NOT NULL,
+                    PRIMARY KEY (username, biome)
+                );
+            """)
+            cur.execute("""
+                INSERT INTO public.user_biomes (username, biome)
+                SELECT username, bioma_padrao
+                FROM public.interpreters
+                WHERE bioma_padrao IS NOT NULL
+                ON CONFLICT (username, biome) DO NOTHING;
+            """)
+
+            for (biome, project), config in self.SCHEMA_MAP.items():
+                schema = config['schema']
+                table = config['table']
+                tiles_schema, tiles_table = config['tiles']
+                sub_info = config.get('subregioes')
+
+                cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {schema}.{table} (
+                        fid         SERIAL PRIMARY KEY,
+                        label       VARCHAR(150),
+                        analyst     VARCHAR(100),
+                        biome       VARCHAR(50),
+                        date        DATE DEFAULT CURRENT_DATE,
+                        prodes      VARCHAR(10),
+                        area_m2     DOUBLE PRECISION,
+                        px_size     INTEGER,
+                        window_px   INTEGER,
+                        ecoregion   VARCHAR(150),
+                        tile        VARCHAR(150),
+                        audit       VARCHAR(100),
+                        label_audit VARCHAR(150),
+                        geom        GEOMETRY(Polygon, 4674)
+                    );
+                """)
+
+                cur.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{table}_geom
+                    ON {schema}.{table} USING GIST(geom);
+                """)
+                cur.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{table}_analyst
+                    ON {schema}.{table}(analyst);
+                """)
+                cur.execute(f"""
+                    CREATE INDEX IF NOT EXISTS idx_{table}_biome
+                    ON {schema}.{table}(biome);
+                """)
+
+                if biome == 'Amazônia' and project == 'Prodes':
+                    # apenas tile
+                    cur.execute(f"""
+                        CREATE OR REPLACE FUNCTION {schema}.fill_tile_{table}()
+                        RETURNS TRIGGER AS $$
+                        BEGIN
+                            SELECT t.tile INTO NEW.tile
+                            FROM {tiles_schema}.{tiles_table} t
+                            WHERE ST_Intersects(NEW.geom, t.geom)
+                            LIMIT 1;
+                            RETURN NEW;
+                        END;
+                        $$ LANGUAGE plpgsql;
+                    """)
+                    cur.execute(f"DROP TRIGGER IF EXISTS trg_tile ON {schema}.{table};")
+                    cur.execute(f"""
+                        CREATE TRIGGER trg_tile
+                        BEFORE INSERT OR UPDATE ON {schema}.{table}
+                        FOR EACH ROW EXECUTE FUNCTION {schema}.fill_tile_{table}();
+                    """)
+                else:
+                    sub_schema, sub_table = sub_info
+                    cur.execute(f"""
+                        CREATE OR REPLACE FUNCTION {schema}.fill_info_{table}()
+                        RETURNS TRIGGER AS $$
+                        BEGIN
+                            SELECT t.tile INTO NEW.tile
+                            FROM {tiles_schema}.{tiles_table} t
+                            WHERE ST_Intersects(NEW.geom, t.geom)
+                            LIMIT 1;
+
+                            SELECT public.sanitize_text(s.eco) INTO NEW.ecoregion
+                            FROM {sub_schema}.{sub_table} s
+                            WHERE ST_Intersects(NEW.geom, s.geom)
+                            LIMIT 1;
+
+                            RETURN NEW;
+                        END;
+                        $$ LANGUAGE plpgsql;
+                    """)
+                    cur.execute(f"DROP TRIGGER IF EXISTS trg_info ON {schema}.{table};")
+                    cur.execute(f"""
+                        CREATE TRIGGER trg_info
+                        BEFORE INSERT OR UPDATE ON {schema}.{table}
+                        FOR EACH ROW EXECUTE FUNCTION {schema}.fill_info_{table}();
+                    """)
+
+                cur.execute(f"""
+                    CREATE OR REPLACE VIEW {schema}.vw_contagem_{table} AS
+                    SELECT analyst, tile, ecoregion, label, COUNT(*) as total
+                    FROM {schema}.{table}
+                    GROUP BY analyst, tile, ecoregion, label;
+                """)
+
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS public.interpreters (
                     id           SERIAL PRIMARY KEY,
                     username     VARCHAR(80)  UNIQUE NOT NULL,
                     nome_completo VARCHAR(150),
                     senha_hash   VARCHAR(64)  NOT NULL,
                     bioma_padrao VARCHAR(80),
                     criado_em    TIMESTAMP DEFAULT NOW(),
-                    is_admin BOOLEAN DEFAULT FALSE,
+                    is_admin     BOOLEAN DEFAULT FALSE,
+                    is_auditor   BOOLEAN DEFAULT FALSE,
                     ativo        BOOLEAN   DEFAULT TRUE
                 );
             """)
@@ -172,19 +250,48 @@ class DBManager:
             cur.close()
             conn.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Autenticação
-    # ─────────────────────────────────────────────────────────────
+    def _get_config(self, biome, project_type):
+        key = (biome, project_type)
+        config = self.SCHEMA_MAP.get(key)
+        if not config:
+            raise ValueError(f'Bioma/projeto desconhecido: {biome} / {project_type}')
+        return config
+
+    def get_biome_config(self, biome: str):
+        conn = self._admin_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            cur.execute("SELECT max_scale FROM public.biome_config WHERE bioma = %s", (biome,))
+            row = cur.fetchone()
+            return {'max_scale': row['max_scale']} if row else {'max_scale': 10000}
+        except:
+            return {'max_scale': 10000}
+        finally:
+            cur.close()
+            conn.close()
+
+    def set_biome_config(self, biome: str, max_scale: int):
+        conn = self._admin_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                INSERT INTO public.biome_config (bioma, max_scale)
+                VALUES (%s, %s)
+                ON CONFLICT (bioma) DO UPDATE SET max_scale = EXCLUDED.max_scale;
+            """, (biome, max_scale))
+            conn.commit()
+        except:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+
     def authenticate(self, username: str, password: str):
-        """
-        Autentica um intérprete.
-        Retorna (True, dict_usuario) ou (False, msg_erro).
-        """
         conn = self._admin_conn()
         cur  = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         try:
             cur.execute(
-                "SELECT * FROM public.interpretes WHERE username=%s AND ativo=TRUE",
+                "SELECT * FROM public.interpreters WHERE username=%s AND ativo=TRUE",
                 (username.strip(),)
             )
             row = cur.fetchone()
@@ -199,31 +306,27 @@ class DBManager:
             cur.close()
             conn.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Registro de novo usuário
-    # ─────────────────────────────────────────────────────────────
-    def register_user(self, username: str, nome_completo: str,
-                      password: str, bioma_padrao: str):
-        """
-        Cria um novo intérprete.
-        Retorna (True, '') ou (False, msg_erro).
-        """
+    def register_user(self, username, nome_completo, password, bioma_padrao, is_auditor=False):
         if len(username.strip()) < 3:
             return False, 'Nome de usuário deve ter ao menos 3 caracteres.'
         if len(password) < 6:
             return False, 'Senha deve ter ao menos 6 caracteres.'
         if bioma_padrao not in BIOMAS:
             return False, f'Bioma inválido: {bioma_padrao}'
-
         conn = self._admin_conn()
-        cur  = conn.cursor()
+        cur = conn.cursor()
         try:
             cur.execute(
-                """INSERT INTO public.interpretes
-                   (username, nome_completo, senha_hash, bioma_padrao)
-                   VALUES (%s, %s, %s, %s)""",
+                """INSERT INTO public.interpreters
+                   (username, nome_completo, senha_hash, bioma_padrao, is_auditor)
+                   VALUES (%s, %s, %s, %s, %s)""",
                 (username.strip(), nome_completo.strip(),
-                 _hash_password(password), bioma_padrao)
+                 _hash_password(password), bioma_padrao, is_auditor)
+            )
+            cur.execute(
+                """INSERT INTO public.user_biomes (username, biome)
+                   VALUES (%s, %s) ON CONFLICT DO NOTHING""",
+                (username.strip(), bioma_padrao)
             )
             conn.commit()
             return True, ''
@@ -237,59 +340,149 @@ class DBManager:
             cur.close()
             conn.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Classes personalizadas
-    # ─────────────────────────────────────────────────────────────
-    def get_custom_classes(self, bioma: str, username: str):
-        """
-        Retorna lista de classes customizadas do usuário para o bioma.
-        Cada item: (code, label, color).
-        Se não houver classes custom, retorna as classes padrão do bioma.
-        """
-        schema = BIOMAS.get(bioma)
-        if not schema:
-            return list(CLASSES_POR_BIOMA.get(bioma, []))
+    def ensure_user_biome(self, username, biome):
+        conn = self._admin_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """INSERT INTO public.user_biomes (username, biome)
+                   VALUES (%s, %s) ON CONFLICT DO NOTHING""",
+                (username, biome)
+            )
+            conn.commit()
+        except:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
 
+    def get_contagem(self, biome, project_type, username=None, tile=None, ecoregion=None, all_interpreters=False):
+        config = self._get_config(biome, project_type)
+        schema, table = config['schema'], config['table']
+        conn = self._admin_conn()
+        cur  = conn.cursor()
+        try:
+            conditions = ['biome = %s']
+            params = [sanitize_text(biome)]
+            if not all_interpreters and username:
+                conditions.append('analyst = %s')
+                params.append(username)
+            if tile:
+                conditions.append('tile = %s')
+                params.append(tile)
+            if ecoregion:
+                conditions.append('ecoregion = %s')
+                params.append(ecoregion)
+            where = ' AND '.join(conditions)
+            cur.execute(f"""
+                SELECT label, COUNT(*)::int as total
+                FROM {schema}.{table}
+                WHERE {where}
+                GROUP BY label
+                ORDER BY total DESC
+            """, params)
+            return cur.fetchall()
+        except:
+            return []
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_tiles_ecorregioes(self, biome, project_type, username):
+        config = self._get_config(biome, project_type)
+        schema, table = config['schema'], config['table']
         conn = self._admin_conn()
         cur  = conn.cursor()
         try:
             cur.execute(f"""
+                SELECT DISTINCT tile FROM {schema}.{table}
+                WHERE analyst = %s AND biome = %s AND tile IS NOT NULL
+                ORDER BY tile
+            """, (username, sanitize_text(biome)))
+            tiles = [r[0] for r in cur.fetchall()]
+
+            cur.execute(f"""
+                SELECT DISTINCT ecoregion FROM {schema}.{table}
+                WHERE analyst = %s AND biome = %s AND ecoregion IS NOT NULL
+                ORDER BY ecoregion
+            """, (username, sanitize_text(biome)))
+            ecos = [r[0] for r in cur.fetchall()]
+            return tiles, ecos
+        except:
+            return [], []
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_ecoregion_display_map(self, biome, project_type):
+        config = self._get_config(biome, project_type)
+        sub = config.get('subregioes')
+        if not sub:
+            return {}
+        schema, table = sub
+        mapping = {}
+        conn = self._admin_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(f"SELECT DISTINCT eco FROM {schema}.{table}")
+            for row in cur.fetchall():
+                original = row[0]
+                sanitized = sanitize_text(original)
+                mapping[sanitized] = original
+        except:
+            pass
+        finally:
+            cur.close()
+            conn.close()
+        return mapping
+
+    def get_custom_classes(self, biome, project_type, username):
+        config = self._get_config(biome, project_type)
+        classes_schema = config['schema']
+        conn = self._admin_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS {classes_schema}.classes_custom (
+                    id         SERIAL PRIMARY KEY,
+                    analyst    VARCHAR(100),
+                    code       VARCHAR(150) NOT NULL,
+                    label      VARCHAR(150) NOT NULL,
+                    color      VARCHAR(10)  DEFAULT '#888888',
+                    ordem      INTEGER      DEFAULT 99,
+                    ativo      BOOLEAN      DEFAULT TRUE,
+                    criado_em  TIMESTAMP    DEFAULT NOW()
+                );
+            """)
+            cur.execute(f"""
                 SELECT code, label, color
-                FROM {schema}.classes_custom
-                WHERE interprete=%s AND ativo=TRUE
+                FROM {classes_schema}.classes_custom
+                WHERE analyst=%s AND ativo=TRUE
                 ORDER BY ordem, id
             """, (username,))
             rows = cur.fetchall()
             if rows:
                 return [(r[0], r[1], r[2]) for r in rows]
-            return list(CLASSES_POR_BIOMA.get(bioma, []))
-        except Exception:
-            return list(CLASSES_POR_BIOMA.get(bioma, []))
+            # Fallback com chave tupla (biome, project_type)
+            return list(CLASSES_POR_BIOMA.get((biome, project_type), []))
+        except:
+            # Mesmo fallback em caso de erro
+            return list(CLASSES_POR_BIOMA.get((biome, project_type), []))
         finally:
             cur.close()
             conn.close()
 
-    def save_custom_classes(self, bioma: str, username: str, classes: list):
-        """
-        Salva a lista completa de classes customizadas para o usuário/bioma.
-        Substitui todas as anteriores.
-        classes: lista de (code, label_com_acento, color)
-        """
-        schema = BIOMAS.get(bioma)
-        if not schema:
-            return False, 'Bioma inválido.'
+    def save_custom_classes(self, biome, project_type, username, classes):
+        config = self._get_config(biome, project_type)
+        schema = config['schema']
         conn = self._admin_conn()
-        cur  = conn.cursor()
+        cur = conn.cursor()
         try:
-            # Remove as antigas
-            cur.execute(f"""
-                DELETE FROM {schema}.classes_custom WHERE interprete=%s
-            """, (username,))
-            # Insere as novas
+            cur.execute(f"DELETE FROM {schema}.classes_custom WHERE analyst=%s", (username,))
             for ordem, (code, label, color) in enumerate(classes):
                 cur.execute(f"""
                     INSERT INTO {schema}.classes_custom
-                    (interprete, code, label, color, ordem)
+                    (analyst, code, label, color, ordem)
                     VALUES (%s, %s, %s, %s, %s)
                 """, (username, code, label, color, ordem))
             conn.commit()
@@ -301,69 +494,52 @@ class DBManager:
             cur.close()
             conn.close()
 
-    # ─────────────────────────────────────────────────────────────
-    # Camada PostGIS via QGIS
-    # ─────────────────────────────────────────────────────────────
-    def get_postgis_layer(self, bioma: str, username: str):
-        """
-        Retorna uma QgsVectorLayer conectada à tabela PostGIS do bioma,
-        filtrada pelo intérprete logado, mas exibindo amostras de todos
-        (somente o intérprete logado pode editar as suas).
-        """
-        schema = BIOMAS.get(bioma)
-        if not schema:
-            return None, f'Bioma desconhecido: {bioma}'
-
+    def get_postgis_layer(self, biome, project_type, username, filter_by_user=True):
+        config = self._get_config(biome, project_type)
+        schema, table = config['schema'], config['table']
         uri = QgsDataSourceUri()
         uri.setConnection(DB_HOST, str(DB_PORT), DB_NAME, DB_USER_USER, DB_USER_PASS)
-        uri.setDataSource(schema, 'amostras', 'geom', '', 'gid')
+
+        if filter_by_user:
+            filter_sql = f"analyst = '{username}' AND biome = '{sanitize_text(biome)}'"
+        else:
+            filter_sql = f"biome = '{sanitize_text(biome)}'"
+
+        uri.setDataSource(schema, table, 'geom', filter_sql, 'fid')
         uri.setParam('srid', '4674')
-
-        layer_name = f'Amostras — {bioma} [{username}]'
+        layer_name = f'Amostras {project_type} {biome} [{username}]'
         layer = QgsVectorLayer(uri.uri(False), layer_name, 'postgres')
-
         if not layer.isValid():
-            return None, (
-                f'Não foi possível conectar à tabela {schema}.amostras.\n'
-                'Verifique a conexão com o banco.'
-            )
+            return None, 'Não foi possível conectar à tabela.'
         return layer, ''
 
-    # ─────────────────────────────────────────────────────────────
-    # Inserir feição diretamente via SQL (mais rápido e seguro)
-    # ─────────────────────────────────────────────────────────────
-    def insert_feature(self, bioma: str, username: str,
-                       geom_wkt: str, crs_srid: int,
-                       cls_name: str, code: str,
-                       area_m2: float, px_size: int, janela_px: int):
-        """
-        Insere uma feição diretamente via psycopg2.
-        Retorna (gid, '') ou (None, msg_erro).
-        """
-        schema = BIOMAS.get(bioma)
-        if not schema:
-            return None, 'Bioma inválido.'
+    def insert_feature(self, biome, project_type, username, geom_wkt, crs_srid, code,
+                   area_m2, px_size, window_px, prodes_str, ecoregion_raw=None,
+                   audit=None, label_audit=None):
+        config = self._get_config(biome, project_type)
+        schema, table = config['schema'], config['table']
         conn = self._admin_conn()
         cur  = conn.cursor()
         try:
             cur.execute(f"""
-                INSERT INTO {schema}.amostras
-                    ("class", label, interprete, data_col,
-                     area_m2, px_size, janela_px, geom)
-                VALUES (%s, %s, %s, %s, %s, %s, %s,
-                        ST_Transform(
-                            ST_GeomFromText(%s, %s),
-                            4674
-                        ))
-                RETURNING gid
+                INSERT INTO {schema}.{table}
+                    (label, analyst, biome, prodes,
+                    area_m2, px_size, window_px, geom,
+                    audit, label_audit)
+                VALUES (%s, %s, %s, %s,
+                        %s, %s, %s,
+                        ST_Transform(ST_GeomFromText(%s, %s), 4674),
+                        %s, %s)
+                RETURNING fid
             """, (
-                cls_name, code, username, datetime.now(),
-                area_m2, px_size, janela_px,
-                geom_wkt, crs_srid
+                code, username, sanitize_text(biome), prodes_str,
+                area_m2, px_size, window_px,
+                geom_wkt, crs_srid,
+                audit, label_audit
             ))
-            gid = cur.fetchone()[0]
+            fid = cur.fetchone()[0]
             conn.commit()
-            return gid, ''
+            return fid, ''
         except Exception as e:
             conn.rollback()
             return None, str(e)
@@ -371,15 +547,28 @@ class DBManager:
             cur.close()
             conn.close()
 
-    def delete_feature(self, bioma: str, gid: int):
-        """Remove uma feição pelo gid."""
-        schema = BIOMAS.get(bioma)
-        if not schema:
-            return False, 'Bioma inválido.'
+    def delete_feature(self, biome, project_type, fid, username, is_admin=False):
+        config = self._get_config(biome, project_type)
+        schema, table = config['schema'], config['table']
         conn = self._admin_conn()
-        cur  = conn.cursor()
+        cur  = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
         try:
-            cur.execute(f"DELETE FROM {schema}.amostras WHERE gid=%s", (gid,))
+            cur.execute(f"""
+                SELECT analyst, date FROM {schema}.{table}
+                WHERE fid = %s
+            """, (fid,))
+            row = cur.fetchone()
+            if row is None:
+                return False, 'Amostra não encontrada.'
+            owner = row['analyst']
+            ts    = row['date']
+            if is_admin:
+                pass
+            elif owner != username:
+                return False, 'Você só pode apagar suas próprias amostras.'
+            elif datetime.now().date() - ts > timedelta(days=1):
+                return False, 'A amostra foi criada há mais de 24 horas e não pode ser apagada.'
+            cur.execute(f"DELETE FROM {schema}.{table} WHERE fid=%s", (fid,))
             conn.commit()
             return True, ''
         except Exception as e:
