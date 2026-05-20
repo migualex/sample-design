@@ -5,7 +5,7 @@ import os
 from qgis.PyQt.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QPushButton, QComboBox, QFrame,
-    QStackedWidget, QWidget, QMessageBox
+    QStackedWidget, QWidget, QMessageBox, QCheckBox
 )
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QPixmap
@@ -58,9 +58,10 @@ class LoginDialog(QDialog):
 
     def __init__(self, db: DBManager, parent=None):
         super().__init__(parent)
-        self.db        = db
-        self.user_info = None
-        self.bioma     = None
+        self.db           = db
+        self.user_info    = None
+        self.biome        = None
+        self.project_type = None
 
         self.setWindowTitle('Sample Design')
         self.setMinimumWidth(360)
@@ -71,6 +72,7 @@ class LoginDialog(QDialog):
             QWidget  {{ background: {C_BG}; color: {C_TEXT};
                         font-family: 'Segoe UI', 'Inter', sans-serif; }}
             QLabel   {{ background: transparent; }}
+            QCheckBox {{ color: {C_TEXT}; font-size: 9pt; }}
             {_field_css()}
         """)
         self._build_ui()
@@ -88,9 +90,7 @@ class LoginDialog(QDialog):
         icon_path  = os.path.join(plugin_dir, 'icons', 'sample_design_icon.png')
         if os.path.exists(icon_path):
             ico_lbl = QLabel()
-            px = QPixmap(icon_path).scaled(
-                36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation
-            )
+            px = QPixmap(icon_path).scaled(36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation)
             ico_lbl.setPixmap(px)
             ico_lbl.setFixedSize(36, 36)
             hdr.addWidget(ico_lbl)
@@ -98,9 +98,7 @@ class LoginDialog(QDialog):
         col = QVBoxLayout()
         col.setSpacing(1)
         t1 = QLabel('Sample Design')
-        t1.setStyleSheet(
-            f'font-size: 15pt; font-weight: 700; color: {C_TEXT}; letter-spacing: -0.4px;'
-        )
+        t1.setStyleSheet(f'font-size: 15pt; font-weight: 700; color: {C_TEXT}; letter-spacing: -0.4px;')
         t2 = QLabel('Coleta de Amostras')
         t2.setStyleSheet(f'font-size: 8.5pt; color: {C_MUTED};')
         col.addWidget(t1)
@@ -120,7 +118,6 @@ class LoginDialog(QDialog):
         self.stack.addWidget(self._page_register())
         root.addWidget(self.stack)
 
-    # ── Login ────────────────────────────────────────────────────
     def _page_login(self):
         pg  = QWidget()
         lay = QVBoxLayout(pg)
@@ -133,7 +130,6 @@ class LoginDialog(QDialog):
         self.edit_user.setMinimumHeight(36)
         lay.addWidget(self.edit_user)
 
-        lay.addSpacing(2)
         lay.addWidget(self._lbl('Senha'))
         self.edit_pass = QLineEdit()
         self.edit_pass.setPlaceholderText('••••••••')
@@ -142,13 +138,18 @@ class LoginDialog(QDialog):
         self.edit_pass.returnPressed.connect(self._do_login)
         lay.addWidget(self.edit_pass)
 
-        lay.addSpacing(2)
         lay.addWidget(self._lbl('Bioma'))
         self.combo_bioma = QComboBox()
         self.combo_bioma.setMinimumHeight(36)
-        for b in BIOMAS.keys():
-            self.combo_bioma.addItem(b)
+        self.combo_bioma.addItems(['Amazônia', 'Pantanal'])
+        self.combo_bioma.currentIndexChanged.connect(self._on_biome_changed)
         lay.addWidget(self.combo_bioma)
+
+        lay.addWidget(self._lbl('Projeto'))
+        self.combo_projeto = QComboBox()
+        self.combo_projeto.setMinimumHeight(36)
+        self.combo_projeto.addItems(['Prodes', 'Vegetação Secundária'])
+        lay.addWidget(self.combo_projeto)
 
         lay.addSpacing(8)
 
@@ -183,7 +184,10 @@ class LoginDialog(QDialog):
         lay.addLayout(row)
         return pg
 
-    # ── Registro ─────────────────────────────────────────────────
+    def _on_biome_changed(self, idx):
+        # All biomes now have both project types, so always visible
+        pass
+
     def _page_register(self):
         pg  = QWidget()
         lay = QVBoxLayout(pg)
@@ -216,9 +220,13 @@ class LoginDialog(QDialog):
         lay.addWidget(self._lbl('Bioma principal'))
         self.combo_reg_bioma = QComboBox()
         self.combo_reg_bioma.setMinimumHeight(36)
-        for b in BIOMAS.keys():
-            self.combo_reg_bioma.addItem(b)
+        self.combo_reg_bioma.addItems(['Amazônia', 'Pantanal'])
         lay.addWidget(self.combo_reg_bioma)
+
+        # Auditor checkbox
+        self.chk_auditor = QCheckBox('Auditor')
+        self.chk_auditor.setStyleSheet(f'QCheckBox {{ color: {C_TEXT}; font-size: 9pt; }}')
+        lay.addWidget(self.chk_auditor)
 
         lay.addSpacing(6)
         self.lbl_reg_err = QLabel('')
@@ -250,11 +258,11 @@ class LoginDialog(QDialog):
         lay.addLayout(row)
         return pg
 
-    # ── Lógica ───────────────────────────────────────────────────
     def _do_login(self):
         user  = self.edit_user.text().strip()
         pwd   = self.edit_pass.text()
         bioma = self.combo_bioma.currentText()
+        projeto = self.combo_projeto.currentText()
 
         if not user or not pwd:
             self.lbl_err.setText('Preencha usuário e senha.')
@@ -265,7 +273,8 @@ class LoginDialog(QDialog):
             self.lbl_err.setText(f'✗  {result}')
             return
         self.user_info = result
-        self.bioma     = bioma
+        self.biome     = bioma
+        self.project_type = projeto
         self.accept()
 
     def _do_register(self):
@@ -274,6 +283,7 @@ class LoginDialog(QDialog):
         pwd   = self.edit_reg_pass.text()
         pwd2  = self.edit_reg_pass2.text()
         bioma = self.combo_reg_bioma.currentText()
+        is_auditor = self.chk_auditor.isChecked()
         self.lbl_reg_err.setText('')
 
         if not all([nome, user, pwd, pwd2]):
@@ -290,7 +300,7 @@ class LoginDialog(QDialog):
             return
 
         self.lbl_reg_err.setText('Criando...')
-        ok, msg = self.db.register_user(user, nome, pwd, bioma)
+        ok, msg = self.db.register_user(user, nome, pwd, bioma, is_auditor)
         if not ok:
             self.lbl_reg_err.setText(f'✗  {msg}')
             return
@@ -300,7 +310,6 @@ class LoginDialog(QDialog):
         self.edit_pass.clear()
         self.stack.setCurrentIndex(0)
 
-    # ── Helpers ──────────────────────────────────────────────────
     def _lbl(self, text):
         l = QLabel(text)
         l.setStyleSheet(
