@@ -10,7 +10,8 @@ from qgis.PyQt.QtWidgets import (
     QLabel, QComboBox, QPushButton, QGroupBox,
     QSpinBox, QTextEdit, QFrame, QFileDialog,
     QMessageBox, QSizePolicy, QScrollArea, QDialog,
-    QInputDialog, QLineEdit
+    QInputDialog, QLineEdit, QRadioButton, QCheckBox, QTableWidget,
+    QTableWidgetItem, QHeaderView, QProgressDialog
 )
 from qgis.PyQt.QtCore import Qt, QTimer, QSize
 from qgis.PyQt.QtGui import QPixmap, QIcon
@@ -23,7 +24,8 @@ from qgis.core import (
     QgsAttributeTableConfig, QgsEditorWidgetSetup,
     QgsProcessingMultiStepFeedback, QgsProcessingFeedback,
     QgsGeometry, QgsFeatureRequest, QgsMapLayer, QgsCoordinateReferenceSystem,
-    QgsCoordinateTransform, QgsFields
+    QgsCoordinateTransform, QgsFields, QgsDistanceArea,
+    QgsExpression, QgsFeatureRequest as QgsFeatReq
 )
 from qgis.PyQt.QtCore import QVariant
 
@@ -235,10 +237,17 @@ class SamplerDock(QDockWidget):
         self._populate_combo()
         is_admin = self.user_info.get('is_admin', False) and not self._is_local_geopackage
         self.btn_mgr.setVisible(is_admin)
+        self.btn_manage_users.setVisible(is_admin)      # movido para junto do gerenciador de classes
 
         self._safe_set_enabled(self.spin, is_admin)
         self._safe_set_enabled(self.spin_max_scale, is_admin)
         self.spin_max_scale.setValue(self.max_scale)
+
+        # Mostrar/ocultar controles de auditoria
+        self.audit_mode_cb.setVisible(self.is_auditor)
+        self.grp_upload.setVisible(is_admin and not self._is_local_geopackage)
+        if self.is_auditor:
+            self.audit_mode_cb.setChecked(False)
 
         self._rebuild_counters_grid()
 
@@ -285,7 +294,10 @@ class SamplerDock(QDockWidget):
         self._configure_layer_visibility(False)
         self._log('Modo local ativo.')
         self.btn_mgr.setVisible(False)
+        self.btn_manage_users.setVisible(False)
         self.btn_wfs.setEnabled(False)
+        self.audit_mode_cb.setVisible(False)
+        self.grp_upload.setVisible(False)
 
     def _logout(self):
         self._refresh_timer.stop()
@@ -315,6 +327,9 @@ class SamplerDock(QDockWidget):
         self.btn_session.setText('Entrar')
         self.btn_session.setStyleSheet(_pill(C_STEEL))
         self.btn_wfs.setEnabled(False)
+        self.audit_mode_cb.setVisible(False)
+        self.btn_manage_users.setVisible(False)
+        self.grp_upload.setVisible(False)
 
     def _sync_counts(self, username):
         if not self._layer_ok(self.layer):
@@ -335,6 +350,15 @@ class SamplerDock(QDockWidget):
                 if code in self.counts:
                     self.counts[code] += 1
         self._update_counters()
+
+    def _reset_session_counts(self):
+        if not self.user_info:
+            return
+        self.total = 0
+        self.counts = {c[0]: 0 for c in self.classes}
+        self._update_counters()
+        self._log('Contadores de sessão reiniciados.')
+        self._update_filtered_count()
 
     def _on_session_btn(self):
         if self._is_local_geopackage or (self.user_info and self.user_info.get('username') != 'local'):
@@ -433,6 +457,19 @@ class SamplerDock(QDockWidget):
 
         lay.addWidget(grp_s)
 
+        # ── Admin upload GeoPackage ─────────────────────────
+        self.grp_upload = QGroupBox('Arquivo local')
+        self.grp_upload.setVisible(False)
+        gu = QVBoxLayout(self.grp_upload)
+        self.btn_upload_gpkg = QPushButton('Selecionar GeoPackage e Submeter')
+        self.btn_upload_gpkg.setStyleSheet(_BTN_ACT)
+        self.btn_upload_gpkg.clicked.connect(self._submit_geopackage)
+        gu.addWidget(self.btn_upload_gpkg)
+        self.lbl_upload_status = QLabel('')
+        self.lbl_upload_status.setStyleSheet(f'color:{C_MUTED}; font-size:8pt;')
+        gu.addWidget(self.lbl_upload_status)
+        lay.addWidget(self.grp_upload)
+
         # Classe
         grp_cls = QGroupBox('Classe'); lc = QVBoxLayout(grp_cls); lc.setSpacing(6)
         self.cls_color_bar = QFrame(); self.cls_color_bar.setFixedHeight(3); self.cls_color_bar.setStyleSheet('background: #C5CDD8; border-radius: 2px;')
@@ -440,7 +477,15 @@ class SamplerDock(QDockWidget):
         lc.addWidget(self.combo); lc.addWidget(self.cls_color_bar)
         self.btn_mgr = QPushButton('Gerenciar classes'); self.btn_mgr.setMinimumHeight(26); self.btn_mgr.clicked.connect(self._open_class_manager)
         self.btn_mgr.setStyleSheet(f'QPushButton {{ background:transparent; color:{C_LINK}; border:1.5px solid {C_BORDER}; border-radius:7px; font-size:8pt; font-weight:600; padding:0 10px; min-height:26px; }} QPushButton:hover {{ background:#EEF6FB; border-color:{C_STEEL}; }}')
-        lc.addWidget(self.btn_mgr); lay.addWidget(grp_cls)
+        lc.addWidget(self.btn_mgr)
+        # ── Gerenciar usuários (admin) ──
+        self.btn_manage_users = QPushButton('Gerenciar usuários')
+        self.btn_manage_users.setMinimumHeight(26)
+        self.btn_manage_users.setStyleSheet(f'QPushButton {{ background:transparent; color:{C_LINK}; border:1.5px solid {C_BORDER}; border-radius:7px; font-size:8pt; font-weight:600; padding:0 10px; min-height:26px; }} QPushButton:hover {{ background:#EEF6FB; border-color:{C_STEEL}; }}')
+        self.btn_manage_users.clicked.connect(self._manage_users)
+        self.btn_manage_users.setVisible(False)
+        lc.addWidget(self.btn_manage_users)
+        lay.addWidget(grp_cls)
 
         # Janela de Amostragem
         grp_w = QGroupBox('Janela de Amostragem'); lw = QVBoxLayout(grp_w); lw.setSpacing(4)
@@ -467,7 +512,20 @@ class SamplerDock(QDockWidget):
         row_max_scale.addWidget(lbl_suffix); row_max_scale.addStretch(); lw.addLayout(row_max_scale)
         lay.addWidget(grp_w)
 
+        # ── Modo de desenho (square / polygon) ─────────────────────
+        grp_mode = QGroupBox('Modo de desenho')
+        mode_layout = QHBoxLayout(grp_mode)
+        self.radio_square = QRadioButton('Quadrado pré-definido')
+        self.radio_polygon = QRadioButton('Polígono livre')
+        self.radio_square.setChecked(True)
+        mode_layout.addWidget(self.radio_square)
+        mode_layout.addWidget(self.radio_polygon)
+        lay.addWidget(grp_mode)
         self._sep(lay)
+
+        self._draw_mode = 'square'
+        self.radio_square.toggled.connect(self._on_mode_changed)
+        self.radio_polygon.toggled.connect(self._on_mode_changed)
 
         # Dashboard de Amostras
         grp_cnt = QGroupBox('Amostras'); lcnt = QVBoxLayout(grp_cnt); lcnt.setSpacing(6)
@@ -477,6 +535,20 @@ class SamplerDock(QDockWidget):
         sub = QLabel('coletadas nesta sessão'); sub.setAlignment(Qt.AlignCenter)
         sub.setStyleSheet(f'color:{C_TEXT}; font-size:7.5pt; margin-bottom:2px;')
         lcnt.addWidget(sub)
+        
+        # Reset session button
+        btn_reset = QPushButton('Resetar contagem')
+        btn_reset.setStyleSheet(_BTN_ACT)
+        btn_reset.clicked.connect(self._reset_session_counts)
+        lcnt.addWidget(btn_reset)
+        
+        # ── Auditoria ─────────────────────
+        self.audit_mode_cb = QCheckBox('Modo Auditoria')
+        self.audit_mode_cb.setStyleSheet(f'color:{C_TEXT}; font-size:8pt;')
+        self.audit_mode_cb.setVisible(False)
+        self.audit_mode_cb.toggled.connect(self._toggle_audit_mode)
+        lcnt.addWidget(self.audit_mode_cb)
+        
         self._sep(lcnt, top=2, bottom=4)
         self.pie_widget = PieChartWidget(); self.pie_widget.setFixedHeight(160); lcnt.addWidget(self.pie_widget)
         self._sep(lcnt, top=4, bottom=4)
@@ -521,6 +593,17 @@ class SamplerDock(QDockWidget):
         scroll.setStyleSheet(f"""QScrollArea {{ border:none; background:{C_BG}; }} QScrollBar:vertical {{ background:transparent; width:8px; }} QScrollBar::handle:vertical {{ background:#D1D9E0; border-radius:4px; min-height:20px; }} QScrollBar::handle:vertical:hover {{ background:#A0AEC0; }} QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height:0; }} QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background:transparent; }}""")
         self.setWidget(scroll)
         self.setMinimumWidth(220)
+
+    def _on_mode_changed(self):
+        if self.radio_square.isChecked():
+            self._draw_mode = 'square'
+        else:
+            self._draw_mode = 'polygon'
+        if hasattr(self, 'tool') and self.tool:
+            self.tool.set_mode(self._draw_mode)
+
+    def get_draw_mode(self):
+        return self._draw_mode
 
     # ── Abrir GeoPackage OFFLINE ──────────────────────────────
     def _find_layer_by_keyword(self, gpkg_path, keyword):
@@ -586,6 +669,7 @@ class SamplerDock(QDockWidget):
         self.btn_session.setText('Fechar GeoPackage')
         self.btn_session.setStyleSheet(_pill(C_ROSE))
         self.btn_mgr.setVisible(False)
+        self.btn_manage_users.setVisible(False)
         self.btn_wfs.setEnabled(True)
         self._populate_combo()
         self._rebuild_counters_grid()
@@ -593,6 +677,8 @@ class SamplerDock(QDockWidget):
         self._configure_layer_visibility(False)
         QgsProject.instance().addMapLayer(self.layer, False)
         QgsProject.instance().layerTreeRoot().insertLayer(0, self.layer)
+        
+        self._refresh_filtros()
         self._sync_counts(analyst)
         self._log(f'GeoPackage aberto: {path} — {analyst} · {biome}')
 
@@ -632,7 +718,182 @@ class SamplerDock(QDockWidget):
             self.db.set_biome_config(self.biome, value)
 
     # ═══════════════════════════════════════════════════════════════
-    # COMBO / GRID DINÂMICOS
+    # AUDITORIA
+    # ═══════════════════════════════════════════════════════════════
+    def _toggle_audit_mode(self, checked):
+        if not self._layer_ok(self.layer):
+            return
+        if checked:
+            self.layer.selectionChanged.connect(self._on_audit_selection)
+            self._log('Modo Auditoria ativado.')
+        else:
+            try:
+                self.layer.selectionChanged.disconnect(self._on_audit_selection)
+            except TypeError:
+                pass
+            self._log('Modo Auditoria desativado.')
+
+    def _on_audit_selection(self):
+        if not self._layer_ok(self.layer) or not self.user_info:
+            return
+        if not self.is_auditor:
+            return
+        
+        selected_ids = self.layer.selectedFeatureIds()
+        if not selected_ids:
+            return
+        
+        code = self.combo.currentData()
+        if not code:
+            self._log('Nenhuma classe selecionada para auditoria.')
+            return
+        
+        auditor = self.user_info['username']
+        layer = self.layer
+        fields = layer.fields()
+        idx_label_audit = fields.indexOf('label_audit')
+        idx_audit = fields.indexOf('audit')
+        
+        if idx_label_audit == -1 or idx_audit == -1:
+            self._log('Campos de auditoria não encontrados na camada.')
+            return
+        
+        changes = {}
+        for fid in selected_ids:
+            changes[fid] = {idx_label_audit: code, idx_audit: auditor}
+        
+        if self._is_local_geopackage:
+            layer.dataProvider().changeAttributeValues(changes)
+            layer.updateExtents()
+            self.canvas.refresh()
+        else:
+            layer.dataProvider().changeAttributeValues(changes)
+            layer.triggerRepaint()
+        
+        self._log(f'Auditoria aplicada: {len(selected_ids)} polígono(s) com classe "{self.combo.currentText()}" pelo usuário {auditor}.')
+        self._sync_counts(self.user_info['username'])
+        self._refresh_filtros()
+
+    # ═══════════════════════════════════════════════════════════════
+    # GERENCIAR USUÁRIOS (admin)
+    # ═══════════════════════════════════════════════════════════════
+    def _manage_users(self):
+        if not self.is_admin or self._is_local_geopackage:
+            return
+
+        users = self.db.get_active_users()          # agora retorna todos os ativos com is_auditor
+        dlg = QDialog(self)
+        dlg.setWindowTitle('Gerenciar Usuários')
+        dlg.setMinimumWidth(600)
+        layout = QVBoxLayout(dlg)
+
+        tbl = QTableWidget(0, 5)
+        tbl.setHorizontalHeaderLabels(['Usuário', 'Nome completo', 'Bioma padrão', 'Admin', 'Auditor'])
+        tbl.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        tbl.setSelectionBehavior(QTableWidget.SelectRows)
+        tbl.setEditTriggers(QTableWidget.NoEditTriggers)
+
+        def refresh_table():
+            nonlocal users
+            users = self.db.get_active_users()
+            tbl.setRowCount(0)
+            for i, u in enumerate(users):
+                tbl.insertRow(i)
+                tbl.setItem(i, 0, QTableWidgetItem(u['username']))
+                tbl.setItem(i, 1, QTableWidgetItem(u.get('nome_completo', '')))
+                tbl.setItem(i, 2, QTableWidgetItem(u.get('bioma_padrao', '')))
+                tbl.setItem(i, 3, QTableWidgetItem('Sim' if u.get('is_admin') else 'Não'))
+                tbl.setItem(i, 4, QTableWidgetItem('Sim' if u.get('is_auditor') else 'Não'))
+        refresh_table()
+
+        layout.addWidget(tbl)
+
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton('Adicionar usuário')
+        btn_add.setStyleSheet(_BTN_ACT)
+        btn_del = QPushButton('Excluir permanentemente')
+        btn_del.setStyleSheet(_BTN_ACT)
+        btn_fechar = QPushButton('Fechar')
+        btn_fechar.setStyleSheet(_BTN_ACT)
+
+        btn_row.addWidget(btn_add)
+        btn_row.addWidget(btn_del)
+        btn_row.addStretch()
+        btn_row.addWidget(btn_fechar)
+        layout.addLayout(btn_row)
+
+        def add_user():
+            dlg_add = QDialog(dlg)
+            dlg_add.setWindowTitle('Novo usuário')
+            dlg_add.setMinimumWidth(350)
+            lay_add = QGridLayout(dlg_add)
+            lay_add.addWidget(QLabel('Usuário:'), 0, 0)
+            edit_user = QLineEdit()
+            lay_add.addWidget(edit_user, 0, 1)
+            lay_add.addWidget(QLabel('Nome completo:'), 1, 0)
+            edit_nome = QLineEdit()
+            lay_add.addWidget(edit_nome, 1, 1)
+            lay_add.addWidget(QLabel('Senha:'), 2, 0)
+            edit_pass = QLineEdit(); edit_pass.setEchoMode(QLineEdit.Password)
+            lay_add.addWidget(edit_pass, 2, 1)
+            lay_add.addWidget(QLabel('Bioma padrão:'), 3, 0)
+            combo_bioma = QComboBox()
+            combo_bioma.addItems(list(BIOMAS.keys()))
+            lay_add.addWidget(combo_bioma, 3, 1)
+            chk_admin = QCheckBox('Administrador')
+            lay_add.addWidget(chk_admin, 4, 0, 1, 2)
+            chk_auditor = QCheckBox('Auditor')
+            lay_add.addWidget(chk_auditor, 5, 0, 1, 2)
+            btn_save = QPushButton('Salvar')
+            btn_cancel = QPushButton('Cancelar')
+            lay_add.addWidget(btn_save, 6, 0)
+            lay_add.addWidget(btn_cancel, 6, 1)
+
+            def save():
+                username = edit_user.text().strip()
+                nome_completo = edit_nome.text().strip()
+                senha = edit_pass.text().strip()
+                bioma = combo_bioma.currentText()
+                is_admin = chk_admin.isChecked()
+                is_auditor = chk_auditor.isChecked()
+                if not username or not senha:
+                    QMessageBox.warning(dlg_add, 'Atenção', 'Usuário e senha são obrigatórios.')
+                    return
+                ok, msg = self.db.register_user(username, nome_completo, senha, bioma, is_auditor)
+                if ok:
+                    if is_admin:
+                        self.db.set_user_admin(username, True)
+                    dlg_add.accept()
+                else:
+                    QMessageBox.critical(dlg_add, 'Erro', msg)
+
+            btn_save.clicked.connect(save)
+            btn_cancel.clicked.connect(dlg_add.reject)
+            if dlg_add.exec_() == QDialog.Accepted:
+                refresh_table()
+
+        def delete_user():
+            row = tbl.currentRow()
+            if row < 0:
+                QMessageBox.warning(dlg, 'Atenção', 'Selecione um usuário.')
+                return
+            username = users[row]['username']
+            if QMessageBox.question(dlg, 'Confirmar exclusão',
+                f'Deseja excluir permanentemente o usuário "{username}"?\nEsta ação não pode ser desfeita.',
+                QMessageBox.Yes | QMessageBox.No) == QMessageBox.Yes:
+                ok, msg = self.db.delete_user(username)
+                if not ok:
+                    QMessageBox.critical(dlg, 'Erro', msg)
+                else:
+                    refresh_table()
+
+        btn_add.clicked.connect(add_user)
+        btn_del.clicked.connect(delete_user)
+        btn_fechar.clicked.connect(dlg.accept)
+        dlg.exec_()
+
+    # ═══════════════════════════════════════════════════════════════
+    # COMBO / GRID DINÂMICOS (mantidos sem alteração)
     # ═══════════════════════════════════════════════════════════════
     def _populate_combo(self):
         self.combo.blockSignals(True)
@@ -684,16 +945,42 @@ class SamplerDock(QDockWidget):
         self.pie_widget.set_data(slices)
 
     def _refresh_filtros(self):
+        """Populate tile and ecoregion combos from the sample layer (GeoPackage) or DB."""
         if self._is_local_geopackage:
-            self.combo_tile.clear(); self.combo_tile.addItem('Todos')
-            self.combo_eco.clear(); self.combo_eco.addItem('Todas')
+            self.combo_tile.blockSignals(True)
+            self.combo_eco.blockSignals(True)
+            self.combo_tile.clear()
+            self.combo_eco.clear()
+            self.combo_tile.addItem('Todos')
+            self.combo_eco.addItem('Todas', None)
+            if self._layer_ok(self.layer):
+                tiles = set()
+                ecos = set()
+                for feat in self.layer.getFeatures():
+                    tile = feat['tile']
+                    if tile is not None:
+                        tiles.add(str(tile))
+                    eco = feat['ecoregion']
+                    if eco is not None:
+                        ecos.add(str(eco))
+                for t in sorted(tiles):
+                    self.combo_tile.addItem(t)
+                for e in sorted(ecos):
+                    self.combo_eco.addItem(e, userData=e)
+            self.combo_tile.blockSignals(False)
+            self.combo_eco.blockSignals(False)
+            self._update_filtered_count()
             return
-        if not self.user_info or self.user_info['username'] == 'local': return
+        
+        if not self.user_info or self.user_info['username'] == 'local': 
+            return
         tiles, ecos_sanitized = self.db.get_tiles_ecorregioes(self.biome, self.project_type, self.user_info['username'])
         self.combo_tile.blockSignals(True)
-        self.combo_eco.blockSignals(True)
-        self.combo_tile.clear(); self.combo_tile.addItem('Todos'); self.combo_tile.addItems(tiles)
-        self.combo_eco.clear(); self.combo_eco.addItem('Todas', None)
+        self.combo_tile.clear()
+        self.combo_tile.addItem('Todos')
+        self.combo_tile.addItems(tiles)
+        self.combo_eco.clear()
+        self.combo_eco.addItem('Todas', None)
         eco_map = self.db.get_ecoregion_display_map(self.biome, self.project_type)
         for eco_s in ecos_sanitized:
             display = eco_map.get(eco_s, eco_s)
@@ -703,47 +990,118 @@ class SamplerDock(QDockWidget):
         self._update_filtered_count()
 
     def _update_filtered_count(self):
-        if self._is_local_geopackage or not self.user_info or self.user_info['username'] == 'local': return
-        tile = self.combo_tile.currentText()
-        eco  = self.combo_eco.currentData()
-        rows = self.db.get_contagem(self.biome, self.project_type, self.user_info['username'],
-                                    tile=tile if tile != 'Todos' else None,
-                                    ecoregion=eco)
-        while self.cnt_grid_layout.count():
-            item = self.cnt_grid_layout.takeAt(0)
-            if item.widget(): item.widget().deleteLater()
-        self.count_labels = {}
-        color_map = {code: color for code, _, color in self.classes}
-        total_f   = 0
-        for i, (cls_code, n) in enumerate(rows):
-            display_name = cls_code
-            for code, label, _ in self.classes:
-                if code == cls_code:
-                    display_name = label
-                    break
-            color = color_map.get(cls_code, '#888888')
-            dot = QLabel('●'); dot.setFixedWidth(14); dot.setStyleSheet(f'color:{color}; font-size:10pt; padding:0;')
-            name = QLabel(display_name); name.setStyleSheet(f'color:{C_TEXT}; font-size:7.5pt;')
-            num = QLabel(str(n)); num.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            num.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT}; min-width:22px;')
-            self.cnt_grid_layout.addWidget(dot,  i, 0)
-            self.cnt_grid_layout.addWidget(name, i, 1)
-            self.cnt_grid_layout.addWidget(num,  i, 2)
-            total_f += n
-        total_label = QLabel('Total')
-        total_label.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT};')
-        total_num = QLabel(str(total_f))
-        total_num.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        total_num.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT}; min-width:22px;')
-        self.cnt_grid_layout.addWidget(total_label, len(rows), 1)
-        self.cnt_grid_layout.addWidget(total_num,  len(rows), 2)
-        self.lbl_filtro_total.setText(f'Filtrado: {total_f}')
-        is_filtered = (tile != 'Todos' or eco is not None)
-        if is_filtered and rows:
-            self.pie_widget.set_data([(display_name, n, color_map.get(cls_code, '#888888')) for cls_code, n in rows if n > 0])
+        if not self._layer_ok(self.layer):
+            return
+        
+        tile = self.combo_tile.currentText() if self.combo_tile.count() > 0 else 'Todos'
+        eco = self.combo_eco.currentData() if self.combo_eco.count() > 0 else None
+        
+        if self._is_local_geopackage:
+            layer = self.layer
+            label_idx = layer.fields().indexOf('label')
+            if label_idx == -1:
+                self._log("Campo 'label' não encontrado.")
+                return
+            
+            filters = []
+            if tile != 'Todos':
+                filters.append(f"tile = '{tile}'")
+            if eco is not None:
+                filters.append(f"ecoregion = '{eco}'")
+            
+            if filters:
+                expr = QgsExpression(' AND '.join(filters))
+                request = QgsFeatReq(expr)
+            else:
+                request = QgsFeatReq()
+            
+            counts = {code: 0 for code, _, _ in self.classes}
+            total_f = 0
+            for feat in layer.getFeatures(request):
+                code = feat['label'] if label_idx >= 0 else ''
+                if code in counts:
+                    counts[code] += 1
+                    total_f += 1
+            
+            while self.cnt_grid_layout.count():
+                item = self.cnt_grid_layout.takeAt(0)
+                if item.widget(): item.widget().deleteLater()
+            self.count_labels = {}
+            color_map = {code: color for code, _, color in self.classes}
+            row_i = 0
+            for code, n in counts.items():
+                if n == 0:
+                    continue
+                display_name = code
+                for c, label, _ in self.classes:
+                    if c == code:
+                        display_name = label
+                        break
+                color = color_map.get(code, '#888888')
+                dot = QLabel('●'); dot.setFixedWidth(14); dot.setStyleSheet(f'color:{color}; font-size:10pt; padding:0;')
+                name = QLabel(display_name); name.setStyleSheet(f'color:{C_TEXT}; font-size:7.5pt;')
+                num = QLabel(str(n)); num.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                num.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT}; min-width:22px;')
+                self.cnt_grid_layout.addWidget(dot,  row_i, 0)
+                self.cnt_grid_layout.addWidget(name, row_i, 1)
+                self.cnt_grid_layout.addWidget(num,  row_i, 2)
+                row_i += 1
+            total_label = QLabel('Total')
+            total_label.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT};')
+            total_num = QLabel(str(total_f))
+            total_num.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            total_num.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT}; min-width:22px;')
+            self.cnt_grid_layout.addWidget(total_label, row_i, 1)
+            self.cnt_grid_layout.addWidget(total_num,  row_i, 2)
+            self.lbl_filtro_total.setText(f'Filtrado: {total_f}')
+            
+            if (tile != 'Todos' or eco is not None) and total_f > 0:
+                slices = [(display_name, n, color_map.get(code, '#888888')) for code, n in counts.items() if n > 0]
+                self.pie_widget.set_data(slices)
+            else:
+                slices = [(label, self.counts.get(code, 0), color) for code, label, color in self.classes if self.counts.get(code, 0) > 0]
+                self.pie_widget.set_data(slices)
         else:
-            slices = [(label, self.counts.get(code, 0), color) for code, label, color in self.classes if self.counts.get(code, 0) > 0]
-            self.pie_widget.set_data(slices)
+            if not self.user_info or self.user_info['username'] == 'local': 
+                return
+            rows = self.db.get_contagem(self.biome, self.project_type, self.user_info['username'],
+                                        tile=tile if tile != 'Todos' else None,
+                                        ecoregion=eco)
+            while self.cnt_grid_layout.count():
+                item = self.cnt_grid_layout.takeAt(0)
+                if item.widget(): item.widget().deleteLater()
+            self.count_labels = {}
+            color_map = {code: color for code, _, color in self.classes}
+            total_f   = 0
+            for i, (cls_code, n) in enumerate(rows):
+                display_name = cls_code
+                for code, label, _ in self.classes:
+                    if code == cls_code:
+                        display_name = label
+                        break
+                color = color_map.get(cls_code, '#888888')
+                dot = QLabel('●'); dot.setFixedWidth(14); dot.setStyleSheet(f'color:{color}; font-size:10pt; padding:0;')
+                name = QLabel(display_name); name.setStyleSheet(f'color:{C_TEXT}; font-size:7.5pt;')
+                num = QLabel(str(n)); num.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+                num.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT}; min-width:22px;')
+                self.cnt_grid_layout.addWidget(dot,  i, 0)
+                self.cnt_grid_layout.addWidget(name, i, 1)
+                self.cnt_grid_layout.addWidget(num,  i, 2)
+                total_f += n
+            total_label = QLabel('Total')
+            total_label.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT};')
+            total_num = QLabel(str(total_f))
+            total_num.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            total_num.setStyleSheet(f'font-weight:700; font-size:7.5pt; color:{C_TEXT}; min-width:22px;')
+            self.cnt_grid_layout.addWidget(total_label, len(rows), 1)
+            self.cnt_grid_layout.addWidget(total_num,  len(rows), 2)
+            self.lbl_filtro_total.setText(f'Filtrado: {total_f}')
+            is_filtered = (tile != 'Todos' or eco is not None)
+            if is_filtered and rows:
+                self.pie_widget.set_data([(display_name, n, color_map.get(cls_code, '#888888')) for cls_code, n in rows if n > 0])
+            else:
+                slices = [(label, self.counts.get(code, 0), color) for code, label, color in self.classes if self.counts.get(code, 0) > 0]
+                self.pie_widget.set_data(slices)
 
     def _open_class_manager(self):
         if not self.user_info or self._is_local_geopackage: return
@@ -868,7 +1226,22 @@ class SamplerDock(QDockWidget):
         if not code: return False
         username = self.user_info['username']
         px   = self.pixel_size
-        area = (px * PIXEL_SIZE_M) ** 2
+        if self.get_draw_mode() == 'square':
+            area = (px * PIXEL_SIZE_M) ** 2
+        else:
+            geom_copy = QgsGeometry(geom)
+            src_crs = self.canvas.mapSettings().destinationCrs()
+            if not src_crs.isValid():
+                src_crs = QgsCoordinateReferenceSystem('EPSG:4674')
+            dest_crs = QgsCoordinateReferenceSystem('EPSG:5880')
+            if src_crs != dest_crs:
+                tr = QgsCoordinateTransform(src_crs, dest_crs, QgsProject.instance())
+                geom_copy.transform(tr)
+            area = geom_copy.area()
+            if area <= 0:
+                self._log('Área do polígono inválida (zero ou negativa).')
+                return False
+
         year = datetime.now().year
         prodes_str = f"{year-1}-{year}"
         auditor_name = username if self.is_auditor else None
@@ -948,6 +1321,8 @@ class SamplerDock(QDockWidget):
         self._update_counters()
         if not self._is_local_geopackage:
             self._refresh_filtros()
+        if self._is_local_geopackage:
+            self._refresh_filtros()
         self._log(f'#{self.total}  {cls_name}')
         return True
 
@@ -986,6 +1361,8 @@ class SamplerDock(QDockWidget):
             self.counts[code] = max(0, self.counts[code] - 1)
         self._update_counters()
         if not self._is_local_geopackage:
+            self._refresh_filtros()
+        if self._is_local_geopackage:
             self._refresh_filtros()
         self._log(f'↩ {entry["cls_name"]}')
 
@@ -1047,10 +1424,12 @@ class SamplerDock(QDockWidget):
         self._update_counters()
         if not self._is_local_geopackage:
             self._refresh_filtros()
+        if self._is_local_geopackage:
+            self._refresh_filtros()
         self._log(f'↪ {entry["cls_name"]}')
 
     # ═══════════════════════════════════════════════════════════════
-    # RELATÓRIO (alinhamento corrigido)
+    # RELATÓRIO (inalterado)
     # ═══════════════════════════════════════════════════════════════
     def _gerar_relatorio(self):
         from qgis.PyQt.QtWidgets import (
@@ -1231,7 +1610,7 @@ class SamplerDock(QDockWidget):
             QMessageBox.critical(self, 'Sample Design', f'Erro:\n{msg}')
 
     # ═══════════════════════════════════════════════════════════════
-    # EXPORTAR PARA WFS (robusto contra coluna geometria string)
+    # EXPORTAR PARA WFS (inalterado)
     # ═══════════════════════════════════════════════════════════════
     def _export_to_wfs(self):
         if not self._is_local_geopackage:
@@ -1308,7 +1687,6 @@ class SamplerDock(QDockWidget):
 
             dlg.accept()
 
-            # ---- Processamento ----
             feedback = QgsProcessingMultiStepFeedback(4, feedback=QgsProcessingFeedback())
             fix_result = processing.run('native:fixgeometries', {'INPUT': wfs_layer, 'METHOD': 1, 'OUTPUT': 'memory:'})
             wfs_fixed = fix_result['OUTPUT']
@@ -1319,60 +1697,45 @@ class SamplerDock(QDockWidget):
             diff_result = processing.run('native:difference', {'INPUT': entry_tile, 'OVERLAY': wfs_fixed, 'OUTPUT': 'memory:'})
             diff_layer = diff_result['OUTPUT']
 
-            # ---- Preparar transformação ----
             source_crs = entry_layer.crs()
             target_crs = wfs_layer.crs()
             tr = None
             if source_crs.isValid() and target_crs.isValid() and source_crs != target_crs:
                 tr = QgsCoordinateTransform(source_crs, target_crs, QgsProject.instance())
 
-            # ---- Montar features ----
             wfs_provider = wfs_layer.dataProvider()
             wfs_fields = wfs_layer.fields()
 
-            # Detecta nome da coluna de geometria – tenta vários métodos
             geom_field_name = None
-            # Loga todos os campos para debug
-            self._log('Campos da camada WFS:')
             for i in range(wfs_fields.count()):
                 fn = wfs_fields.field(i)
-                self._log(f'  {fn.name()}  tipo={fn.typeName()}')
                 if geom_field_name is None:
                     if fn.name() in ('geom', 'geometry', 'the_geom', 'GEOMETRY'):
                         geom_field_name = fn.name()
                     elif 'geom' in fn.typeName().lower():
                         geom_field_name = fn.name()
-
             if geom_field_name is None:
-                geom_field_name = 'geom'   # último fallback
-            self._log(f'Coluna geometria WFS considerada: {geom_field_name}')
+                geom_field_name = 'geom'
 
             features = []
             for feat in diff_layer.getFeatures():
                 new_feat = QgsFeature(wfs_fields)
                 geom = QgsGeometry(feat.geometry())
-
                 if tr is not None:
                     try:
                         geom.transform(tr)
                     except Exception:
                         pass
-
                 new_feat.setGeometry(geom)
-
-                # Copia atributos por nome, ignorando a coluna de geometria
                 for i, field in enumerate(wfs_fields):
                     if field.name() == geom_field_name:
                         continue
                     idx = diff_layer.fields().indexOf(field.name())
                     if idx >= 0:
                         new_feat.setAttribute(field.name(), feat.attribute(field.name()))
-
-                # Garante que nenhum atributo geom seja enviado como string
                 for i, field in enumerate(wfs_fields):
                     if field.name() == geom_field_name:
                         new_feat.setAttribute(i, None)
-
                 features.append(new_feat)
 
             if not features:
@@ -1410,6 +1773,182 @@ class SamplerDock(QDockWidget):
         QgsProject.instance().addMapLayer(layer, False)
         self.entry_combo.addItem(layer.name(), layer.id())
         self.entry_combo.setCurrentIndex(self.entry_combo.count() - 1)
+
+    # ═══════════════════════════════════════════════════════════════
+    # SUBMETER GEOPACKAGE (admin) – COM SELEÇÃO DE DESTINO
+    # ═══════════════════════════════════════════════════════════════
+    def _submit_geopackage(self):
+        if not self.user_info or not self.is_admin:
+            return
+
+        ok, err = self.db.test_connection()
+        if not ok:
+            QMessageBox.critical(self, 'Erro', f'Sem conexão com o banco: {err}')
+            return
+
+        path, _ = QFileDialog.getOpenFileName(self, 'Selecionar GeoPackage', '', 'GeoPackage (*.gpkg)')
+        if not path:
+            return
+
+        entrada = self._find_layer_by_keyword(path, 'entrada_amostras')
+        tiles   = self._find_layer_by_keyword(path, 'tile')
+        subreg  = self._find_layer_by_keyword(path, 'subregio')
+
+        if not entrada or not entrada.isValid():
+            QMessageBox.critical(self, 'Erro', 'Camada "entrada_amostras" não encontrada.')
+            return
+        if not tiles or not tiles.isValid():
+            QMessageBox.warning(self, 'Aviso', 'Camada de tiles não encontrada – tile ficará vazio.')
+        if not subreg or not subreg.isValid():
+            QMessageBox.warning(self, 'Aviso', 'Camada de subregiões não encontrada – ecoregion ficará vazio.')
+
+        # ── Escolher camada de destino ────────────────────────
+        dest_dlg = QDialog(self)
+        dest_dlg.setWindowTitle('Selecionar destino')
+        dest_dlg.setMinimumWidth(350)
+        dest_layout = QVBoxLayout(dest_dlg)
+        dest_layout.addWidget(QLabel('Bioma e projeto de destino:'))
+        combo_dest = QComboBox()
+        targets = list(self.db.SCHEMA_MAP.keys())
+        target_names = [f"{bioma} - {proj}" for bioma, proj in targets]
+        combo_dest.addItems(target_names)
+        dest_layout.addWidget(combo_dest)
+        btn_dest_ok = QPushButton('OK')
+        btn_dest_cancel = QPushButton('Cancelar')
+        btn_row = QHBoxLayout()
+        btn_row.addWidget(btn_dest_ok)
+        btn_row.addWidget(btn_dest_cancel)
+        dest_layout.addLayout(btn_row)
+
+        target_biome = None
+        target_proj = None
+
+        def set_target():
+            nonlocal target_biome, target_proj
+            idx = combo_dest.currentIndex()
+            if idx >= 0:
+                target_biome, target_proj = targets[idx]
+            dest_dlg.accept()
+
+        btn_dest_ok.clicked.connect(set_target)
+        btn_dest_cancel.clicked.connect(dest_dlg.reject)
+
+        if dest_dlg.exec_() != QDialog.Accepted or not target_biome:
+            return
+
+        n_feats = entrada.featureCount()
+        reply = QMessageBox.question(self, 'Confirmar',
+            f'Submeter {n_feats} feições para {target_biome} - {target_proj}?\nContinuar?',
+            QMessageBox.Yes | QMessageBox.No)
+        if reply != QMessageBox.Yes:
+            return
+
+        # CRS da camada de entrada
+        crs = entrada.crs()
+        srid = crs.postgisSrid()
+        if not srid or srid == 0:
+            authid = crs.authid()
+            if ':' in authid:
+                try:
+                    srid = int(authid.split(':')[1])
+                except:
+                    srid = 4674
+            else:
+                srid = 4674
+
+        entrada_fields = {f.name(): i for i, f in enumerate(entrada.fields())}
+        default_analyst = self.user_info['username']
+
+        progress = QProgressDialog('Submetendo amostras…', 'Cancelar', 0, n_feats, self)
+        progress.setWindowModality(Qt.WindowModal)
+
+        success = 0
+        errors = 0
+
+        for i, feat in enumerate(entrada.getFeatures()):
+            if progress.wasCanceled():
+                break
+            progress.setValue(i)
+
+            geom = feat.geometry()
+            if geom is None or geom.isEmpty():
+                self._log(f'Feição {i}: geometria vazia, ignorada.')
+                errors += 1
+                continue
+
+            # Tile
+            tile = None
+            if tiles:
+                for tf in tiles.getFeatures():
+                    if tf.geometry().intersects(geom):
+                        tile = tf['tile']
+                        break
+
+            # Ecoregion
+            ecoregion = None
+            if subreg:
+                for sf in subreg.getFeatures():
+                    if sf.geometry().intersects(geom):
+                        raw = sf['eco']
+                        if raw:
+                            ecoregion = sanitize_text(raw)
+                        break
+
+            def get_attr(name, default=None):
+                idx = entrada_fields.get(name)
+                if idx is not None:
+                    val = feat.attribute(idx)
+                    if val is not None and str(val) != '':
+                        return val
+                return default
+
+            analyst = get_attr('analyst', default_analyst)
+            label   = get_attr('label', '')
+            date    = get_attr('date')
+            if isinstance(date, QDate):
+                date = date.toPyDate()
+            prodes  = get_attr('prodes', f"{datetime.now().year-1}-{datetime.now().year}")
+            area_m2 = get_attr('area_m2')
+            if area_m2 is None:
+                try:
+                    geom_copy = QgsGeometry(geom)
+                    src_crs = entrada.crs()
+                    dest_crs = QgsCoordinateReferenceSystem('EPSG:5880')
+                    if src_crs != dest_crs:
+                        tr = QgsCoordinateTransform(src_crs, dest_crs, QgsProject.instance())
+                        geom_copy.transform(tr)
+                    area_m2 = geom_copy.area()
+                except:
+                    area_m2 = 0.0
+            px_size = get_attr('px_size')
+            window_px = get_attr('window_px')
+
+            fid, err = self.db.insert_feature(
+                target_biome, target_proj, analyst, geom.asWkt(), srid,
+                label, area_m2, px_size, window_px, prodes,
+                ecoregion_raw=ecoregion, audit=None, label_audit=None,
+                date_val=date
+            )
+            if fid is None:
+                self._log(f'Erro feição {i}: {err}')
+                errors += 1
+            else:
+                success += 1
+                self._log(f'Inserida feição {i} (fid={fid})')
+
+        progress.setValue(n_feats)
+        self.lbl_upload_status.setText(f'Sucesso: {success}, Erros: {errors}')
+        self._log(f'Submissão concluída: {success} inseridas, {errors} erros.')
+
+        # Atualizar mapa se estiver na mesma combinação
+        if (self.biome == target_biome and self.project_type == target_proj
+                and not self._is_local_geopackage):
+            layer = self._get_layer()
+            if self._layer_ok(layer):
+                layer.dataProvider().reloadData()
+                layer.triggerRepaint()
+            self._sync_counts(self.user_info['username'])
+            self._refresh_filtros()
 
     def closeEvent(self, event):
         self._refresh_timer.stop()

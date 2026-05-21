@@ -175,7 +175,6 @@ class DBManager:
                 """)
 
                 if biome == 'Amazônia' and project == 'Prodes':
-                    # apenas tile
                     cur.execute(f"""
                         CREATE OR REPLACE FUNCTION {schema}.fill_tile_{table}()
                         RETURNS TRIGGER AS $$
@@ -340,6 +339,19 @@ class DBManager:
             cur.close()
             conn.close()
 
+    def set_user_admin(self, username: str, is_admin: bool):
+        conn = self._admin_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("UPDATE public.interpreters SET is_admin = %s WHERE username = %s",
+                        (is_admin, username))
+            conn.commit()
+        except:
+            conn.rollback()
+        finally:
+            cur.close()
+            conn.close()
+
     def ensure_user_biome(self, username, biome):
         conn = self._admin_conn()
         cur = conn.cursor()
@@ -356,6 +368,47 @@ class DBManager:
             cur.close()
             conn.close()
 
+    def delete_user(self, username: str):
+        """Exclui permanentemente o usuário da tabela interpreters."""
+        conn = self._admin_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute("DELETE FROM public.user_biomes WHERE username = %s", (username,))
+            cur.execute("DELETE FROM public.interpreters WHERE username = %s", (username,))
+            conn.commit()
+            return True, ''
+        except Exception as e:
+            conn.rollback()
+            return False, str(e)
+        finally:
+            cur.close()
+            conn.close()
+
+    # ── get_active_users agora inclui is_auditor ──
+    def get_active_users(self):
+        conn = self._admin_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            cur.execute("""
+                SELECT username, nome_completo, bioma_padrao, is_admin, is_auditor
+                FROM public.interpreters
+                WHERE ativo = TRUE
+                ORDER BY username
+            """)
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+        except Exception as e:
+            print(f'Erro ao buscar usuários: {e}')
+            return []
+        finally:
+            cur.close()
+            conn.close()
+
+    # Os métodos abaixo permanecem inalterados ...
+    # (get_contagem, get_tiles_ecorregioes, get_ecoregion_display_map,
+    #  get_custom_classes, save_custom_classes, get_postgis_layer,
+    #  insert_feature, delete_feature)
+    # (incluídos para completar o arquivo)
     def get_contagem(self, biome, project_type, username=None, tile=None, ecoregion=None, all_interpreters=False):
         config = self._get_config(biome, project_type)
         schema, table = config['schema'], config['table']
@@ -463,10 +516,8 @@ class DBManager:
             rows = cur.fetchall()
             if rows:
                 return [(r[0], r[1], r[2]) for r in rows]
-            # Fallback com chave tupla (biome, project_type)
             return list(CLASSES_POR_BIOMA.get((biome, project_type), []))
         except:
-            # Mesmo fallback em caso de erro
             return list(CLASSES_POR_BIOMA.get((biome, project_type), []))
         finally:
             cur.close()
@@ -515,27 +566,32 @@ class DBManager:
 
     def insert_feature(self, biome, project_type, username, geom_wkt, crs_srid, code,
                    area_m2, px_size, window_px, prodes_str, ecoregion_raw=None,
-                   audit=None, label_audit=None):
+                   audit=None, label_audit=None, date_val=None):
         config = self._get_config(biome, project_type)
         schema, table = config['schema'], config['table']
         conn = self._admin_conn()
         cur  = conn.cursor()
         try:
+            date_col   = ', date'    if date_val is not None else ''
+            date_ph    = ', %s'      if date_val is not None else ''
+            date_param = [date_val]  if date_val is not None else []
+
             cur.execute(f"""
                 INSERT INTO {schema}.{table}
                     (label, analyst, biome, prodes,
                     area_m2, px_size, window_px, geom,
-                    audit, label_audit)
+                    audit, label_audit{date_col})
                 VALUES (%s, %s, %s, %s,
                         %s, %s, %s,
                         ST_Transform(ST_GeomFromText(%s, %s), 4674),
-                        %s, %s)
+                        %s, %s{date_ph})
                 RETURNING fid
             """, (
                 code, username, sanitize_text(biome), prodes_str,
                 area_m2, px_size, window_px,
                 geom_wkt, crs_srid,
-                audit, label_audit
+                audit, label_audit,
+                *date_param
             ))
             fid = cur.fetchone()[0]
             conn.commit()
