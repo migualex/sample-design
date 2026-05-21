@@ -15,7 +15,7 @@ class SampleDesign:
         self.canvas    = iface.mapCanvas()
         self.plugin_dir = os.path.dirname(__file__)
         self.action    = None
-        self.dock      = None          
+        self.dock      = None
         self.tool      = None
         self.prev_tool = None
 
@@ -41,6 +41,12 @@ class SampleDesign:
                 self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
                 self.dock.hide()   # oculta inicialmente; será mostrado a seguir
                 self.tool = SamplerTool(self.canvas, self.dock)
+
+                # Synchronise initial mode
+                self.tool.set_mode(self.dock.get_draw_mode())
+                # Connect mode change signal (via the dock's radio buttons)
+                self.dock.radio_square.toggled.connect(lambda: self.tool.set_mode(self.dock.get_draw_mode()))
+                self.dock.radio_polygon.toggled.connect(lambda: self.tool.set_mode(self.dock.get_draw_mode()))
 
             self.prev_tool = self.canvas.mapTool()
             self.canvas.setMapTool(self.tool)
