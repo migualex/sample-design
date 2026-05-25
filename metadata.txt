@@ -2,7 +2,7 @@
 name=Sample Design
 qgisMinimumVersion=3.22
 description=Ferramenta interativa para coleta de amostras de uso e cobertura da terra.
-version=0.5.0
+version=1.0.0
 author=Miguel Alexandre da Cunha
 email=miguel.cunha@inpe.br
 about=Plugin para coleta interativa de amostras com integração PostgreSQL/PostGIS. Possui autenticação por usuário, seleção de bioma, gerenciamento de classes personalizadas e armazenamento no banco de dados, permitindo visualização em tempo real.
