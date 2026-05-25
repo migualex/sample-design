@@ -51,7 +51,7 @@ Informe usuário, senha, bioma e o projeto de trabalho. Caso não tenha conta, c
 
 ### 3. Coletar amostras
 - Selecione a classe no menu suspenso (ex.: "Corte Raso", "Floresta").
-- Escolha o modo de desenho: a) Quadrado pré-definido: uma janela fixa com tamanho de pixel configurável. b) Polígono livre: desenhe qualquer forma.
+- Escolha o modo de desenho: a) Quadrado pré-definido: uma janela fixa com tamanho de pixel. b) Polígono livre: desenhe qualquer forma.
 - Mova o cursor sobre a imagem: uma pré-visualização quadrada vermelha tracejada aparece (no modo quadrado).
 - **Botão esquerdo** para confirmar a amostra.
 - **ESC** para desativar a ferramenta de amostragem.
