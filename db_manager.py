@@ -368,6 +368,23 @@ class DBManager:
             cur.close()
             conn.close()
 
+    # ── NOVOS MÉTODOS PARA GERENCIAMENTO DE USUÁRIOS ──
+    def get_all_users(self):
+        conn = self._admin_conn()
+        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+        try:
+            cur.execute("""
+                SELECT username, nome_completo, bioma_padrao, is_admin, is_auditor, ativo
+                FROM public.interpreters
+                ORDER BY username
+            """)
+            return [dict(row) for row in cur.fetchall()]
+        except:
+            return []
+        finally:
+            cur.close()
+            conn.close()
+
     def delete_user(self, username: str):
         """Exclui permanentemente o usuário da tabela interpreters."""
         conn = self._admin_conn()
@@ -384,7 +401,6 @@ class DBManager:
             cur.close()
             conn.close()
 
-    # ── get_active_users agora inclui is_auditor ──
     def get_active_users(self):
         conn = self._admin_conn()
         cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
@@ -404,11 +420,27 @@ class DBManager:
             cur.close()
             conn.close()
 
-    # Os métodos abaixo permanecem inalterados ...
-    # (get_contagem, get_tiles_ecorregioes, get_ecoregion_display_map,
-    #  get_custom_classes, save_custom_classes, get_postgis_layer,
-    #  insert_feature, delete_feature)
-    # (incluídos para completar o arquivo)
+    def get_user_polygon_counts(self, biome, project_type):
+        """Retorna lista de (username, total_poligonos) ordenado por total decrescente."""
+        config = self._get_config(biome, project_type)
+        schema, table = config['schema'], config['table']
+        conn = self._admin_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(f"""
+                SELECT analyst, COUNT(*) as total
+                FROM {schema}.{table}
+                WHERE biome = %s
+                GROUP BY analyst
+                ORDER BY total DESC
+            """, (sanitize_text(biome),))
+            return cur.fetchall()
+        except:
+            return []
+        finally:
+            cur.close()
+            conn.close()
+
     def get_contagem(self, biome, project_type, username=None, tile=None, ecoregion=None, all_interpreters=False):
         config = self._get_config(biome, project_type)
         schema, table = config['schema'], config['table']
@@ -516,8 +548,10 @@ class DBManager:
             rows = cur.fetchall()
             if rows:
                 return [(r[0], r[1], r[2]) for r in rows]
+            # Fallback com chave tupla (biome, project_type)
             return list(CLASSES_POR_BIOMA.get((biome, project_type), []))
         except:
+            # Mesmo fallback em caso de erro
             return list(CLASSES_POR_BIOMA.get((biome, project_type), []))
         finally:
             cur.close()

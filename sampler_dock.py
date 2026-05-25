@@ -14,7 +14,7 @@ from qgis.PyQt.QtWidgets import (
     QTableWidgetItem, QHeaderView, QProgressDialog
 )
 from qgis.PyQt.QtCore import Qt, QTimer, QSize
-from qgis.PyQt.QtGui import QPixmap, QIcon
+from qgis.PyQt.QtGui import QPixmap, QIcon, QColor, QBrush
 
 from qgis.core import (
     QgsVectorLayer, QgsField, QgsFeature,
@@ -90,6 +90,17 @@ _BTN_ACT = f"""
     QPushButton:disabled {{
         background: #E2E8F0; color: #A0AEC0;
     }}
+"""
+
+_BTN_RESET = f"""
+    QPushButton {{
+        background: {C_ROSE}; color: #FFFFFF;
+        border: none; border-radius: 5px;
+        font-size: 7.5pt; font-weight: 600;
+        padding: 0 8px; min-height: 22px;
+    }}
+    QPushButton:hover   {{ background: {C_ROSE}CC; }}
+    QPushButton:pressed {{ background: {C_ROSE}99; }}
 """
 
 class PieChartWidget(QWidget):
@@ -225,11 +236,15 @@ class SamplerDock(QDockWidget):
         self.btn_session.setText('Sair')
         self.btn_session.setStyleSheet(_pill(C_ROSE))
 
+        # Ocultar botão GeoPackage quando conectado ao banco
+        self.btn_geopackage.setVisible(False)
+        self.btn_ref.setVisible(True)
+
         if not self._is_local_geopackage and username != 'local':
             self.db.ensure_user_biome(username, self.biome)
 
         if self._is_local_geopackage:
-            self.classes = list(CLASSES_POR_BIOMA.get((self.biome, 'Prodes'), []))
+            self.classes = list(CLASSES_POR_BIOMA.get((self.biome, self.project_type), []))
         else:
             self.classes = self.db.get_custom_classes(self.biome, self.project_type, username)
 
@@ -237,17 +252,18 @@ class SamplerDock(QDockWidget):
         self._populate_combo()
         is_admin = self.user_info.get('is_admin', False) and not self._is_local_geopackage
         self.btn_mgr.setVisible(is_admin)
-        self.btn_manage_users.setVisible(is_admin)      # movido para junto do gerenciador de classes
+        self.btn_manage_users.setVisible(is_admin)
 
         self._safe_set_enabled(self.spin, is_admin)
         self._safe_set_enabled(self.spin_max_scale, is_admin)
         self.spin_max_scale.setValue(self.max_scale)
 
-        # Mostrar/ocultar controles de auditoria
+        # Controles de auditoria
         self.audit_mode_cb.setVisible(self.is_auditor)
-        self.grp_upload.setVisible(is_admin and not self._is_local_geopackage)
         if self.is_auditor:
             self.audit_mode_cb.setChecked(False)
+        self.btn_reclass.setVisible(False)
+        self.grp_upload.setVisible(is_admin and not self._is_local_geopackage)
 
         self._rebuild_counters_grid()
 
@@ -288,6 +304,8 @@ class SamplerDock(QDockWidget):
         self.lbl_user.setText('Sem conexão')
         self.lbl_user.setStyleSheet(f'color:{C_TEXT}; font-size:9pt; font-weight:400; background:transparent;')
         self.lbl_biome_val.setText(self.biome)
+        self.btn_geopackage.setVisible(True)
+        self.btn_ref.setVisible(False)
         self._populate_combo()
         self._rebuild_counters_grid()
         self._new_memory_layer()
@@ -297,6 +315,7 @@ class SamplerDock(QDockWidget):
         self.btn_manage_users.setVisible(False)
         self.btn_wfs.setEnabled(False)
         self.audit_mode_cb.setVisible(False)
+        self.btn_reclass.setVisible(False)
         self.grp_upload.setVisible(False)
 
     def _logout(self):
@@ -326,8 +345,11 @@ class SamplerDock(QDockWidget):
         self.lbl_biome_val.setText('—')
         self.btn_session.setText('Entrar')
         self.btn_session.setStyleSheet(_pill(C_STEEL))
+        self.btn_geopackage.setVisible(True)
+        self.btn_ref.setVisible(False)
         self.btn_wfs.setEnabled(False)
         self.audit_mode_cb.setVisible(False)
+        self.btn_reclass.setVisible(False)
         self.btn_manage_users.setVisible(False)
         self.grp_upload.setVisible(False)
 
@@ -475,6 +497,20 @@ class SamplerDock(QDockWidget):
         self.cls_color_bar = QFrame(); self.cls_color_bar.setFixedHeight(3); self.cls_color_bar.setStyleSheet('background: #C5CDD8; border-radius: 2px;')
         self.combo = QComboBox(); self.combo.setMinimumHeight(34); self.combo.currentIndexChanged.connect(self._on_class_changed)
         lc.addWidget(self.combo); lc.addWidget(self.cls_color_bar)
+
+        # ── Auditoria: checkbox e botão reclass ─────────────
+        self.audit_mode_cb = QCheckBox('Modo Auditoria')
+        self.audit_mode_cb.setStyleSheet(f'color:{C_TEXT}; font-size:8pt;')
+        self.audit_mode_cb.setVisible(False)
+        self.audit_mode_cb.toggled.connect(self._toggle_audit_mode)
+        lc.addWidget(self.audit_mode_cb)
+
+        self.btn_reclass = QPushButton('Reclass (Auditoria)')
+        self.btn_reclass.setStyleSheet(_BTN_ACT)
+        self.btn_reclass.clicked.connect(self._reclass_audit)
+        self.btn_reclass.setVisible(False)
+        lc.addWidget(self.btn_reclass)
+
         self.btn_mgr = QPushButton('Gerenciar classes'); self.btn_mgr.setMinimumHeight(26); self.btn_mgr.clicked.connect(self._open_class_manager)
         self.btn_mgr.setStyleSheet(f'QPushButton {{ background:transparent; color:{C_LINK}; border:1.5px solid {C_BORDER}; border-radius:7px; font-size:8pt; font-weight:600; padding:0 10px; min-height:26px; }} QPushButton:hover {{ background:#EEF6FB; border-color:{C_STEEL}; }}')
         lc.addWidget(self.btn_mgr)
@@ -485,6 +521,7 @@ class SamplerDock(QDockWidget):
         self.btn_manage_users.clicked.connect(self._manage_users)
         self.btn_manage_users.setVisible(False)
         lc.addWidget(self.btn_manage_users)
+
         lay.addWidget(grp_cls)
 
         # Janela de Amostragem
@@ -535,20 +572,19 @@ class SamplerDock(QDockWidget):
         sub = QLabel('coletadas nesta sessão'); sub.setAlignment(Qt.AlignCenter)
         sub.setStyleSheet(f'color:{C_TEXT}; font-size:7.5pt; margin-bottom:2px;')
         lcnt.addWidget(sub)
-        
-        # Reset session button
+
+        # Reset session button – centered
         btn_reset = QPushButton('Resetar contagem')
-        btn_reset.setStyleSheet(_BTN_ACT)
+        btn_reset.setStyleSheet(_BTN_RESET)
+        btn_reset.setMaximumWidth(120)
+        btn_reset.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         btn_reset.clicked.connect(self._reset_session_counts)
-        lcnt.addWidget(btn_reset)
-        
-        # ── Auditoria ─────────────────────
-        self.audit_mode_cb = QCheckBox('Modo Auditoria')
-        self.audit_mode_cb.setStyleSheet(f'color:{C_TEXT}; font-size:8pt;')
-        self.audit_mode_cb.setVisible(False)
-        self.audit_mode_cb.toggled.connect(self._toggle_audit_mode)
-        lcnt.addWidget(self.audit_mode_cb)
-        
+        reset_hbox = QHBoxLayout()
+        reset_hbox.addStretch()
+        reset_hbox.addWidget(btn_reset)
+        reset_hbox.addStretch()
+        lcnt.addLayout(reset_hbox)
+
         self._sep(lcnt, top=2, bottom=4)
         self.pie_widget = PieChartWidget(); self.pie_widget.setFixedHeight(160); lcnt.addWidget(self.pie_widget)
         self._sep(lcnt, top=4, bottom=4)
@@ -574,8 +610,10 @@ class SamplerDock(QDockWidget):
         # Ações
         btn_undo = QPushButton('↩  Desfazer'); btn_undo.setStyleSheet(_BTN_ACT); btn_undo.clicked.connect(self._undo); lay.addWidget(btn_undo)
         btn_redo = QPushButton('↪  Refazer'); btn_redo.setStyleSheet(_BTN_ACT); btn_redo.clicked.connect(self._redo); lay.addWidget(btn_redo)
-        btn_ref  = QPushButton('↺  Atualizar mapa'); btn_ref.setStyleSheet(_BTN_ACT); btn_ref.clicked.connect(self._manual_refresh); lay.addWidget(btn_ref)
-        btn_exp  = QPushButton('↑  Exportar'); btn_exp.setStyleSheet(_BTN_ACT); btn_exp.clicked.connect(self._export); lay.addWidget(btn_exp)
+        self.btn_ref = QPushButton('↺  Atualizar mapa')
+        self.btn_ref.setStyleSheet(_BTN_ACT)
+        self.btn_ref.clicked.connect(self._manual_refresh)
+        lay.addWidget(self.btn_ref)
 
         self.btn_wfs = QPushButton('Exportar para WFS')
         self.btn_wfs.setStyleSheet(_BTN_ACT)
@@ -605,7 +643,7 @@ class SamplerDock(QDockWidget):
     def get_draw_mode(self):
         return self._draw_mode
 
-    # ── Abrir GeoPackage OFFLINE ──────────────────────────────
+    # ── Abrir GeoPackage OFFLINE (com escolha de projeto) ──
     def _find_layer_by_keyword(self, gpkg_path, keyword):
         root = QgsVectorLayer(gpkg_path, '', 'ogr')
         for sl in root.dataProvider().subLayers():
@@ -622,7 +660,22 @@ class SamplerDock(QDockWidget):
         if not ok or not analyst.strip():
             return
         analyst = analyst.strip()
+
+        # Selecionar bioma
         biome, ok = QInputDialog.getItem(self, 'Bioma', 'Selecione o bioma:', list(BIOMAS.keys()), 0, False)
+        if not ok:
+            return
+
+        # Determinar projetos disponíveis para o bioma escolhido
+        projetos_disponiveis = []
+        for (b, p) in CLASSES_POR_BIOMA.keys():
+            if b == biome:
+                projetos_disponiveis.append(p)
+        if not projetos_disponiveis:
+            QMessageBox.critical(self, 'Erro', f'Nenhum projeto disponível para o bioma "{biome}".')
+            return
+
+        project_type, ok = QInputDialog.getItem(self, 'Projeto', 'Selecione o projeto:', projetos_disponiveis, 0, False)
         if not ok:
             return
 
@@ -655,9 +708,9 @@ class SamplerDock(QDockWidget):
         self._is_local_geopackage = True
         self.user_info = {'username': analyst, 'nome_completo': analyst}
         self.biome = biome
-        self.project_type = 'Prodes'
+        self.project_type = project_type
         self.is_auditor = False
-        self.classes = list(CLASSES_POR_BIOMA.get((biome, 'Prodes'), []))
+        self.classes = list(CLASSES_POR_BIOMA.get((biome, project_type), []))
         self.counts = {c[0]: 0 for c in self.classes}
         self.is_admin = False
         self.max_scale = 10000
@@ -665,9 +718,11 @@ class SamplerDock(QDockWidget):
         self._safe_set_enabled(self.spin_max_scale, False)
         self.spin_max_scale.setValue(self.max_scale)
         self.lbl_user.setText(analyst)
-        self.lbl_biome_val.setText(biome)
+        self.lbl_biome_val.setText(f"{biome} - {project_type}")
         self.btn_session.setText('Fechar GeoPackage')
         self.btn_session.setStyleSheet(_pill(C_ROSE))
+        self.btn_geopackage.setVisible(False)
+        self.btn_ref.setVisible(False)
         self.btn_mgr.setVisible(False)
         self.btn_manage_users.setVisible(False)
         self.btn_wfs.setEnabled(True)
@@ -680,22 +735,31 @@ class SamplerDock(QDockWidget):
         
         self._refresh_filtros()
         self._sync_counts(analyst)
-        self._log(f'GeoPackage aberto: {path} — {analyst} · {biome}')
+        self._log(f'GeoPackage aberto: {path} — {analyst} · {biome} · {project_type}')
 
     # ── Visibilidade das colunas ───────────────────────────────
     def _configure_layer_visibility(self, is_admin):
-        if not self._layer_ok(self.layer): return
+        if not self._layer_ok(self.layer):
+            return
         always_hidden = {'área', 'ações'}
-        hidden_for_non_admin = {'area_m2', 'px_size', 'window_px', 'analyst'}
-        if not is_admin and not self.is_auditor:
-            hidden_for_non_admin.update({'audit', 'label_audit'})
         cfg = self.layer.attributeTableConfig()
         columns = cfg.columns()
         for col in columns:
-            if col.name in always_hidden or col.name in hidden_for_non_admin:
+            if col.name in always_hidden:
                 col.hidden = True
-            else:
+                continue
+            if is_admin:
                 col.hidden = False
+            elif self.is_auditor:
+                if col.name in {'area_m2', 'px_size', 'window_px', 'audit'}:
+                    col.hidden = True
+                else:
+                    col.hidden = False
+            else:
+                if col.name in {'area_m2', 'px_size', 'window_px', 'analyst', 'audit', 'label_audit'}:
+                    col.hidden = True
+                else:
+                    col.hidden = False
         cfg.setColumns(columns)
         self.layer.setAttributeTableConfig(cfg)
         idx_audit = self.layer.fields().indexOf('label_audit')
@@ -718,50 +782,57 @@ class SamplerDock(QDockWidget):
             self.db.set_biome_config(self.biome, value)
 
     # ═══════════════════════════════════════════════════════════════
-    # AUDITORIA
+    # MODO AUDITORIA (toggle)
     # ═══════════════════════════════════════════════════════════════
     def _toggle_audit_mode(self, checked):
-        if not self._layer_ok(self.layer):
-            return
+        self.btn_reclass.setVisible(checked)
         if checked:
-            self.layer.selectionChanged.connect(self._on_audit_selection)
             self._log('Modo Auditoria ativado.')
         else:
-            try:
-                self.layer.selectionChanged.disconnect(self._on_audit_selection)
-            except TypeError:
-                pass
             self._log('Modo Auditoria desativado.')
 
-    def _on_audit_selection(self):
+    # ═══════════════════════════════════════════════════════════════
+    # RECLASS (AUDITORIA)
+    # ═══════════════════════════════════════════════════════════════
+    def _reclass_audit(self):
         if not self._layer_ok(self.layer) or not self.user_info:
             return
         if not self.is_auditor:
             return
-        
+
         selected_ids = self.layer.selectedFeatureIds()
         if not selected_ids:
+            QMessageBox.warning(self, 'Auditoria', 'Selecione pelo menos um polígono no mapa.')
             return
-        
+
         code = self.combo.currentData()
         if not code:
-            self._log('Nenhuma classe selecionada para auditoria.')
+            self._log('Nenhuma classe selecionada para reclassificação.')
             return
-        
+
         auditor = self.user_info['username']
         layer = self.layer
         fields = layer.fields()
         idx_label_audit = fields.indexOf('label_audit')
         idx_audit = fields.indexOf('audit')
-        
+
         if idx_label_audit == -1 or idx_audit == -1:
             self._log('Campos de auditoria não encontrados na camada.')
             return
-        
+
+        cls_name = self.combo.currentText()
+        reply = QMessageBox.question(
+            self, 'Confirmar Reclassificação',
+            f'Reclassificar {len(selected_ids)} polígono(s) como "{cls_name}"?',
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
         changes = {}
         for fid in selected_ids:
             changes[fid] = {idx_label_audit: code, idx_audit: auditor}
-        
+
         if self._is_local_geopackage:
             layer.dataProvider().changeAttributeValues(changes)
             layer.updateExtents()
@@ -769,8 +840,8 @@ class SamplerDock(QDockWidget):
         else:
             layer.dataProvider().changeAttributeValues(changes)
             layer.triggerRepaint()
-        
-        self._log(f'Auditoria aplicada: {len(selected_ids)} polígono(s) com classe "{self.combo.currentText()}" pelo usuário {auditor}.')
+
+        self._log(f'Reclass: {len(selected_ids)} polígono(s) → "{cls_name}" por {auditor}.')
         self._sync_counts(self.user_info['username'])
         self._refresh_filtros()
 
@@ -781,7 +852,7 @@ class SamplerDock(QDockWidget):
         if not self.is_admin or self._is_local_geopackage:
             return
 
-        users = self.db.get_active_users()          # agora retorna todos os ativos com is_auditor
+        users = self.db.get_active_users()
         dlg = QDialog(self)
         dlg.setWindowTitle('Gerenciar Usuários')
         dlg.setMinimumWidth(600)
@@ -893,7 +964,7 @@ class SamplerDock(QDockWidget):
         dlg.exec_()
 
     # ═══════════════════════════════════════════════════════════════
-    # COMBO / GRID DINÂMICOS (mantidos sem alteração)
+    # COMBO / GRID DINÂMICOS
     # ═══════════════════════════════════════════════════════════════
     def _populate_combo(self):
         self.combo.blockSignals(True)
@@ -1195,7 +1266,7 @@ class SamplerDock(QDockWidget):
         self._log('Mapa atualizado.')
 
     # ═══════════════════════════════════════════════════════════════
-    # INTERSECÇÃO LOCAL
+    # INTERSECÇÃO LOCAL (para GeoPackage offline)
     # ═══════════════════════════════════════════════════════════════
     def _local_intersect(self, geom):
         tile = None
@@ -1429,7 +1500,7 @@ class SamplerDock(QDockWidget):
         self._log(f'↪ {entry["cls_name"]}')
 
     # ═══════════════════════════════════════════════════════════════
-    # RELATÓRIO (inalterado)
+    # RELATÓRIO (com estatísticas de usuários para admin)
     # ═══════════════════════════════════════════════════════════════
     def _gerar_relatorio(self):
         from qgis.PyQt.QtWidgets import (
@@ -1477,28 +1548,60 @@ class SamplerDock(QDockWidget):
         pie = PieChartWidget(); pie.setFixedHeight(180)
         pie.set_data([(self._code_to_label(code), n, color_map.get(code, '#888888')) for code, n in rows if n > 0])
         lay.addWidget(pie)
+
+        # Tabela principal com ícone colorido – alinhamento corrigido
         tbl = QTableWidget(len(rows), 3)
-        tbl.setHorizontalHeaderLabels(['Classe', 'Amostras', '%'])
-        tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        tbl.setHorizontalHeaderLabels(['', 'Classe', 'Amostras'])
+        tbl.horizontalHeader().setSectionResizeMode(0, QHeaderView.Fixed)
+        tbl.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
         tbl.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        tbl.setColumnWidth(0, 18)
         tbl.verticalHeader().setVisible(False)
-        tbl.verticalHeader().setDefaultSectionSize(30)
+        tbl.verticalHeader().setDefaultSectionSize(26)
         tbl.setEditTriggers(QTableWidget.NoEditTriggers)
-        tbl.setAlternatingRowColors(True)
+        tbl.setAlternatingRowColors(False)
         tbl.setSelectionMode(QTableWidget.NoSelection)
+        tbl.setShowGrid(False)
+        tbl.setIconSize(QSize(12, 12))
         for i, (code, n) in enumerate(rows):
-            pct = f'{n / total * 100:.1f}%'
             cor = color_map.get(code, '#888888')
-            px = QPixmap(14, 14); px.fill(QColor(cor))
-            pp = QPainter(px); pp.setPen(QColor('#00000033')); pp.drawRect(0, 0, 13, 13); pp.end()
-            display = self._code_to_label(code)
-            item_cls = QTableWidgetItem(QIcon(px), display)
+            # Coluna 0: quadrado de cor (sem texto, sem ícone, só fundo)
+            item_cor = QTableWidgetItem()
+            item_cor.setBackground(QBrush(QColor(cor)))
+            item_cor.setFlags(Qt.ItemIsEnabled)
+            tbl.setItem(i, 0, item_cor)
+            # Coluna 1: nome da classe
+            item_cls = QTableWidgetItem(self._code_to_label(code))
             item_cls.setTextAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-            item_n   = QTableWidgetItem(str(n)); item_n.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
-            item_pct = QTableWidgetItem(pct); item_pct.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
-            tbl.setItem(i, 0, item_cls); tbl.setItem(i, 1, item_n); tbl.setItem(i, 2, item_pct)
+            item_cls.setFlags(Qt.ItemIsEnabled)
+            tbl.setItem(i, 1, item_cls)
+            # Coluna 2: número
+            item_n = QTableWidgetItem(str(n))
+            item_n.setTextAlignment(Qt.AlignCenter | Qt.AlignVCenter)
+            item_n.setFlags(Qt.ItemIsEnabled)
+            tbl.setItem(i, 2, item_n)
         lay.addWidget(tbl)
+
+        # ── Tabela de polígonos por usuário (apenas admin) ──
+        if self.is_admin and not self._is_local_geopackage and self.user_info:
+            user_stats = self.db.get_user_polygon_counts(self.biome, self.project_type)
+            if user_stats:
+                lay.addWidget(self._sep())
+                user_lbl = QLabel('Total de polígonos por usuário')
+                user_lbl.setStyleSheet(f'font-size:10pt; font-weight:700; color:{C_TEXT};')
+                lay.addWidget(user_lbl)
+                user_tbl = QTableWidget(len(user_stats), 2)
+                user_tbl.setHorizontalHeaderLabels(['Usuário', 'Total'])
+                user_tbl.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+                user_tbl.verticalHeader().setVisible(False)
+                user_tbl.setEditTriggers(QTableWidget.NoEditTriggers)
+                user_tbl.setAlternatingRowColors(True)
+                user_tbl.setSelectionMode(QTableWidget.NoSelection)
+                for i, (user, count) in enumerate(user_stats):
+                    user_tbl.setItem(i, 0, QTableWidgetItem(user))
+                    user_tbl.setItem(i, 1, QTableWidgetItem(str(count)))
+                lay.addWidget(user_tbl)
+
         btn_row = QHBoxLayout()
         btn_pdf = QPushButton('⬇  Exportar PDF'); btn_pdf.setStyleSheet(_BTN_ACT)
         btn_pdf.clicked.connect(lambda: self._exportar_pdf(dlg, tile, eco_display, eco_sanitized, rows, total))
@@ -1535,8 +1638,11 @@ class SamplerDock(QDockWidget):
         y = txt('Relatório amostral', y, size=14, bold=True)
         y = txt(f'Bioma: {self.biome or "—"}  ·  Tile: {tile}  ·  Ecorregião: {eco_display}', y, size=9)
         y = txt(f'Total de amostras: {total}', y, size=12, bold=True); y += pt(0.15)
-        pie_size = pt(2.2)
-        pie_rect = QRectF(M, y, pie_size, pie_size)
+
+        # Pie chart centralizado (sem legenda)
+        pie_size = pt(2.4)
+        pie_x = (W - pie_size) / 2
+        pie_rect = QRectF(pie_x, y, pie_size, pie_size)
         color_map = {code: color for code, _, color in self.classes}
         total_v = sum(n for _, n in rows); angle = 90 * 16
         for code, n in rows:
@@ -1544,16 +1650,9 @@ class SamplerDock(QDockWidget):
             cor = color_map.get(code, '#888888')
             p.setBrush(QBrush(QColor(cor))); p.setPen(QPen(QColor('#FFFFFF'), 3))
             p.drawPie(pie_rect, angle, -span); angle -= span
-        lx = M + pie_size + pt(0.3); ly = y + pt(0.1); p.setFont(QFont('Arial', 9))
-        for code, n in rows:
-            cor = color_map.get(code, '#888888'); p.setBrush(QBrush(QColor(cor))); p.setPen(Qt.NoPen)
-            p.drawRoundedRect(QRectF(lx, ly, pt(0.15), pt(0.15)), 3, 3)
-            p.setPen(QColor('#2D3142')); pct = f'{n / total_v * 100:.1f}%'
-            display = self._code_to_label(code)
-            p.drawText(QRectF(lx + pt(0.2), ly - pt(0.02), W - lx - M - pt(0.2), pt(0.22)),
-                       Qt.AlignLeft | Qt.AlignVCenter, f'{display}  —  {n} ({pct})')
-            ly += pt(0.26)
         y += pie_size + pt(0.4)
+
+        # Tabela
         col_w = [(W - M * 2) * 0.6, (W - M * 2) * 0.2, (W - M * 2) * 0.2]; row_h = pt(0.28); hdr_h = pt(0.32)
         p.setBrush(QBrush(QColor('#F0F4F8'))); p.setPen(Qt.NoPen); p.drawRect(QRectF(M, y, W - M * 2, hdr_h))
         p.setPen(QColor('#2D3142')); p.setFont(QFont('Arial', 9, QFont.Bold))
@@ -1589,28 +1688,8 @@ class SamplerDock(QDockWidget):
     def _small(self, text):
         l = QLabel(text); l.setStyleSheet(f'color:{C_TEXT}; font-size:8pt;'); return l
 
-    def _export(self):
-        layer = self._get_layer()
-        if not self._layer_ok(layer) or layer.featureCount() == 0:
-            QMessageBox.warning(self, 'Sample Design', 'Nenhuma amostra para exportar.')
-            return
-        path, filt = QFileDialog.getSaveFileName(self, 'Exportar', 'amostras', 'GeoPackage (*.gpkg);;Shapefile (*.shp)')
-        if not path: return
-        driver = 'GPKG' if 'gpkg' in filt.lower() or path.endswith('.gpkg') else 'ESRI Shapefile'
-        if driver == 'GPKG' and not path.endswith('.gpkg'): path += '.gpkg'
-        elif driver == 'ESRI Shapefile' and not path.endswith('.shp'): path += '.shp'
-        opts = QgsVectorFileWriter.SaveVectorOptions()
-        opts.driverName = driver; opts.fileEncoding = 'UTF-8'
-        err, msg = QgsVectorFileWriter.writeAsVectorFormatV2(layer, path, QgsCoordinateTransformContext(), opts)
-        if err == QgsVectorFileWriter.NoError:
-            self._log(f'Exportado: {os.path.basename(path)}')
-            QMessageBox.information(self, 'Sample Design', f'Exportado!\n{path}')
-        else:
-            self._log(f'Erro: {msg}')
-            QMessageBox.critical(self, 'Sample Design', f'Erro:\n{msg}')
-
     # ═══════════════════════════════════════════════════════════════
-    # EXPORTAR PARA WFS (inalterado)
+    # EXPORTAR PARA WFS
     # ═══════════════════════════════════════════════════════════════
     def _export_to_wfs(self):
         if not self._is_local_geopackage:
@@ -1775,7 +1854,35 @@ class SamplerDock(QDockWidget):
         self.entry_combo.setCurrentIndex(self.entry_combo.count() - 1)
 
     # ═══════════════════════════════════════════════════════════════
-    # SUBMETER GEOPACKAGE (admin) – COM SELEÇÃO DE DESTINO
+    # VALIDAÇÃO DE SOBREPOSIÇÃO
+    # ═══════════════════════════════════════════════════════════════
+    def _check_overlap(self, geom, target_biome, target_proj):
+        config = self.db._get_config(target_biome, target_proj)
+        schema = config['schema']
+        table = config['table']
+        srid = 4674
+
+        conn = self.db._admin_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(f"""
+                SELECT COUNT(*) FROM {schema}.{table}
+                WHERE ST_Intersects(
+                    ST_Transform(ST_GeomFromText(%s, %s), 4674),
+                    geom
+                )
+            """, (geom.asWkt(), srid))
+            count = cur.fetchone()[0]
+            return count > 0
+        except Exception as e:
+            self._log(f'Erro ao verificar sobreposição: {e}')
+            return True
+        finally:
+            cur.close()
+            conn.close()
+
+    # ═══════════════════════════════════════════════════════════════
+    # SUBMETER GEOPACKAGE (admin) – SEM interseção local de tile/eco
     # ═══════════════════════════════════════════════════════════════
     def _submit_geopackage(self):
         if not self.user_info or not self.is_admin:
@@ -1798,9 +1905,9 @@ class SamplerDock(QDockWidget):
             QMessageBox.critical(self, 'Erro', 'Camada "entrada_amostras" não encontrada.')
             return
         if not tiles or not tiles.isValid():
-            QMessageBox.warning(self, 'Aviso', 'Camada de tiles não encontrada – tile ficará vazio.')
+            self._log('Aviso: camada de tiles não encontrada no GeoPackage – filtro por tile não funcionará.')
         if not subreg or not subreg.isValid():
-            QMessageBox.warning(self, 'Aviso', 'Camada de subregiões não encontrada – ecoregion ficará vazio.')
+            self._log('Aviso: camada de subregiões não encontrada – não será usada.')
 
         # ── Escolher camada de destino ────────────────────────
         dest_dlg = QDialog(self)
@@ -1813,6 +1920,18 @@ class SamplerDock(QDockWidget):
         target_names = [f"{bioma} - {proj}" for bioma, proj in targets]
         combo_dest.addItems(target_names)
         dest_layout.addWidget(combo_dest)
+
+        # ── Opção de filtrar por tile ───────────────────────
+        dest_layout.addWidget(QLabel('Filtrar por tile (opcional):'))
+        edit_tile_filter = QLineEdit()
+        edit_tile_filter.setPlaceholderText('Deixe vazio para submeter todos os tiles')
+        dest_layout.addWidget(edit_tile_filter)
+
+        # ── Checkbox para validar sobreposição ──────────────
+        chk_overlap = QCheckBox('Validar sobreposição (ignorar polígonos sobrepostos)')
+        chk_overlap.setChecked(True)
+        dest_layout.addWidget(chk_overlap)
+
         btn_dest_ok = QPushButton('OK')
         btn_dest_cancel = QPushButton('Cancelar')
         btn_row = QHBoxLayout()
@@ -1836,9 +1955,31 @@ class SamplerDock(QDockWidget):
         if dest_dlg.exec_() != QDialog.Accepted or not target_biome:
             return
 
-        n_feats = entrada.featureCount()
+        tile_filter = edit_tile_filter.text().strip()
+        validate_overlap = chk_overlap.isChecked()
+
+        # ── Filtrar feições por tile (se especificado) ──────
+        feats_to_submit = []
+        if tile_filter and tiles and tiles.isValid():
+            for feat in entrada.getFeatures():
+                geom = feat.geometry()
+                if geom is None or geom.isEmpty():
+                    continue
+                tile_val = None
+                for tf in tiles.getFeatures():
+                    if tf.geometry().intersects(geom):
+                        tile_val = tf['tile']
+                        break
+                if tile_val == tile_filter:
+                    feats_to_submit.append(feat)
+        else:
+            feats_to_submit = list(entrada.getFeatures())
+
+        n_feats = len(feats_to_submit)
         reply = QMessageBox.question(self, 'Confirmar',
-            f'Submeter {n_feats} feições para {target_biome} - {target_proj}?\nContinuar?',
+            f'Submeter {n_feats} feições para {target_biome} - {target_proj}?\n'
+            f'Validação de sobreposição: {"Sim" if validate_overlap else "Não"}\n'
+            f'Tile filter: {tile_filter or "Todos"}',
             QMessageBox.Yes | QMessageBox.No)
         if reply != QMessageBox.Yes:
             return
@@ -1864,8 +2005,9 @@ class SamplerDock(QDockWidget):
 
         success = 0
         errors = 0
+        skipped_overlap = 0
 
-        for i, feat in enumerate(entrada.getFeatures()):
+        for i, feat in enumerate(feats_to_submit):
             if progress.wasCanceled():
                 break
             progress.setValue(i)
@@ -1876,24 +2018,14 @@ class SamplerDock(QDockWidget):
                 errors += 1
                 continue
 
-            # Tile
-            tile = None
-            if tiles:
-                for tf in tiles.getFeatures():
-                    if tf.geometry().intersects(geom):
-                        tile = tf['tile']
-                        break
+            # Validação de sobreposição
+            if validate_overlap:
+                if self._check_overlap(geom, target_biome, target_proj):
+                    self._log(f'Feição {i}: sobreposição detectada, ignorada.')
+                    skipped_overlap += 1
+                    continue
 
-            # Ecoregion
-            ecoregion = None
-            if subreg:
-                for sf in subreg.getFeatures():
-                    if sf.geometry().intersects(geom):
-                        raw = sf['eco']
-                        if raw:
-                            ecoregion = sanitize_text(raw)
-                        break
-
+            # Atributos (tile e ecoregion serão preenchidos pelo banco)
             def get_attr(name, default=None):
                 idx = entrada_fields.get(name)
                 if idx is not None:
@@ -1926,7 +2058,7 @@ class SamplerDock(QDockWidget):
             fid, err = self.db.insert_feature(
                 target_biome, target_proj, analyst, geom.asWkt(), srid,
                 label, area_m2, px_size, window_px, prodes,
-                ecoregion_raw=ecoregion, audit=None, label_audit=None,
+                ecoregion_raw=None, audit=None, label_audit=None,
                 date_val=date
             )
             if fid is None:
@@ -1937,8 +2069,8 @@ class SamplerDock(QDockWidget):
                 self._log(f'Inserida feição {i} (fid={fid})')
 
         progress.setValue(n_feats)
-        self.lbl_upload_status.setText(f'Sucesso: {success}, Erros: {errors}')
-        self._log(f'Submissão concluída: {success} inseridas, {errors} erros.')
+        self.lbl_upload_status.setText(f'Sucesso: {success}, Erros: {errors}, Ignoradas (sobreposição): {skipped_overlap}')
+        self._log(f'Submissão concluída: {success} inseridas, {errors} erros, {skipped_overlap} ignoradas por sobreposição.')
 
         # Atualizar mapa se estiver na mesma combinação
         if (self.biome == target_biome and self.project_type == target_proj
