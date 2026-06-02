@@ -19,25 +19,15 @@ Plugin para QGIS que permite a coleta coloborativa e interativa de amostras de t
 
 ## Instalação
 
-### 1. Instalar a dependência Python
+### Download do arquivo ZIP
 
-No **OSGeo4W Shell** (Windows) ou terminal (Linux/macOS):
+Baixe o arquivo `.zip`.
 
-```bash
-pip install psycopg2-binary
-```
+No QGIS, acesse:
 
-### 2. Copiar o plugin para o QGIS
+**Complementos → Gerenciar e Instalar Complementos → Instalar a partir do ZIP**
 
-Clone o repositório e copie a pasta `sample-design` para o diretório de plugins do QGIS:
-
-```bash
-git clone https://github.com/migualex/sample-design.git
-```
-
-### 3. Ativar no QGIS
-
-**Complementos → Gerenciar e Instalar Complementos → Instalar a partir do ZIP → selecionar arquivo ZIP**
+Selecione o arquivo `.zip` baixado e conclua a instalação.
 
 ---
 
