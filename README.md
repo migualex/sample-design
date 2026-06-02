@@ -19,17 +19,15 @@ Plugin para QGIS que permite a coleta coloborativa e interativa de amostras de t
 
 ## Instalação
 
-### 1. Copiar o plugin para o QGIS
+### Download do arquivo ZIP
 
-Clone o repositório e copie a pasta `sample-design` para o diretório de plugins do QGIS:
+Baixe o arquivo `.zip`.
 
-```bash
-git clone https://github.com/migualex/sample-design.git
-```
+No QGIS, acesse:
 
-### 2. Ativar no QGIS
+**Complementos → Gerenciar e Instalar Complementos → Instalar a partir do ZIP**
 
-**Complementos → Gerenciar e Instalar Complementos → Instalar a partir do ZIP → selecionar arquivo ZIP**
+Selecione o arquivo `.zip` baixado e conclua a instalação.
 
 ---
 
