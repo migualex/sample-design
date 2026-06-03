@@ -47,3 +47,5 @@ Informe usuário, senha, bioma e o projeto de trabalho. Caso não tenha conta, c
 - **ESC** para desativar a ferramenta de amostragem.
   
 This project is distributed under the GNU General Public License v3.0 (GPL-3.0).
+You are free to use, study, modify, and distribute this software. However, any redistribution include proper attribution to the original author.
+Plagiarism and unauthorized copying are strictly prohibited.
