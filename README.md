@@ -3,19 +3,12 @@
   <img src="icons/sample_design_icon.png" alt="Sample Design" width="80"/>
 </p>
 
-<!--
-<p align="center">
-  <strong>Ferramenta interativa para coleta de amostras de uso e cobertura da terra</strong><br/>
-</p>
--->
-
 <p align="center">
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" />
-  <img src="https://img.shields.io/badge/lifecycle-maturing-orange.svg" />
+  <img src="https://img.shields.io/badge/lifecycle-maturing-green.svg" />
 </p>
 
-
-Plugin para QGIS que permite a coleta coloborativa e interativa de amostras de treinamento, diretamente integrado ao banco de dados PostgreSQL/PostGIS.
+Plugin para QGIS que permite a coleta colaborativa e interativa de amostras de treinamento, diretamente integrado ao banco de dados PostgreSQL/PostGIS. Desenvolvido no âmbito do projeto de Semiautomatização do Programa BiomasBR. 
 
 ### Instalação
 
@@ -29,18 +22,21 @@ Selecione o arquivo e conclua a instalação.
 
 ### Como usar
 
-##### 1. Abrir o plugin
+#### 1. Abrir o plugin
 Clique no ícone **Sample Design** na barra de ferramentas.
 
-##### 2. Fazer login
+#### 2. Fazer login
 Informe usuário, senha, bioma e o projeto de trabalho. Caso não tenha conta, clique em **Criar conta**.
 
-##### 3. Coletar amostras
+#### 3. Coletar amostras
 - Selecione a classe no menu suspenso (ex.: "Corte Raso", "Floresta").
-- Escolha o modo de desenho: a) Quadrado pré-definido: uma janela fixa com tamanho de pixel. b) Polígono livre: desenhe qualquer forma.
-- Mova o cursor sobre a imagem: uma pré-visualização quadrada vermelha tracejada aparece (no modo quadrado).
+- Escolha o modo de desenho:
+  a) Quadrado pré-definido: uma janela fixa com tamanho de pixel.
+  b) Polígono livre.
 - **Botão esquerdo** para confirmar a amostra.
 - **ESC** para desativar a ferramenta de amostragem.
+
+Veja o arquivo [MANUAL](./MANUAL.docx) para as instruções completas.
 
 ---
 
@@ -51,5 +47,3 @@ Este projeto é distribuído sob a licença GNU General Public License v3.0 (GPL
 Você é livre para usar, estudar, modificar e distribuir este software, desde 
 que mantenha os avisos de copyright e a licença original em qualquer cópia 
 ou trabalho derivado, conforme exigido pela GPL-3.0.
-
-Veja o arquivo [LICENSE](./LICENSE.txt) para o texto completo.
