@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/lifecycle-maturing-green.svg" />
 </p>
 
-Plugin para QGIS que permite a coleta colaborativa e interativa de amostras de treinamento, diretamente integrado ao banco de dados SQL. Desenvolvido no âmbito do projeto de Semiautomatização do Programa BiomasBR-INPE. 
+Plugin desenvolvido no âmbito do Programa BiomasBR-INPE para coleta interativa de amostras destinadas ao treinamento de modelos de inteligência artificial. As funcionalidades incluem integração ao PostgreSQL/PostGIS, autenticação de usuários, gerenciamento de classes personalizadas e acompanhamento em tempo real, com sincronização por WFS. 
 
 ### Instalação
 
