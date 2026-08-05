@@ -36,8 +36,6 @@ Informe usuário, senha, bioma e o projeto de trabalho. Caso não tenha conta, c
 - **Botão esquerdo** para confirmar a amostra.
 - **ESC** para desativar a ferramenta de amostragem.
 
-Veja o arquivo [MANUAL](./MANUAL.docx) para as instruções completas.
-
 ---
 
 ### Licença
