@@ -1,4 +1,4 @@
-## Sample Design
+# Sample Design
 <p align="center">
   <img src="icons/sample_design_icon.png" alt="Sample Design" width="80"/>
 </p>
@@ -10,7 +10,7 @@
 
 Plugin desenvolvido no âmbito do Programa BiomasBR-INPE para coleta interativa de amostras destinadas ao treinamento de modelos de inteligência artificial. As funcionalidades incluem integração ao PostgreSQL/PostGIS, autenticação de usuários, gerenciamento de classes personalizadas e acompanhamento em tempo real, com sincronização por WFS. 
 
-### Instalação
+## Instalação
 
 Baixe o arquivo `.zip`.
 
@@ -18,17 +18,15 @@ No QGIS, acesse: **Complementos → Gerenciar e Instalar Complementos → Instal
 
 Selecione o arquivo e conclua a instalação.
 
----
+## Como usar
 
-### Como usar
-
-#### 1. Abrir o plugin
+### 1. Abrir o plugin
 Clique no ícone **Sample Design** na barra de ferramentas.
 
-#### 2. Fazer login
+### 2. Fazer login
 Informe usuário, senha, bioma e o projeto de trabalho. Caso não tenha conta, clique em **Criar conta**.
 
-#### 3. Coletar amostras
+### 3. Coletar amostras
 - Selecione a classe no menu suspenso (ex.: "Corte Raso", "Floresta").
 - Escolha o modo de desenho:
   a) Quadrado pré-definido: uma janela fixa com tamanho de pixel.
@@ -36,9 +34,7 @@ Informe usuário, senha, bioma e o projeto de trabalho. Caso não tenha conta, c
 - **Botão esquerdo** para confirmar a amostra.
 - **ESC** para desativar a ferramenta de amostragem.
 
----
-
-### Licença
+## Licença
 
 Este projeto é distribuído sob a licença GNU General Public License v3.0 (GPL-3.0).
 
