@@ -5,7 +5,6 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/license-GPL--3.0-blue" />
-  <img src="https://img.shields.io/badge/platform-QGIS-brightgreen" /></a>
   <img src="https://img.shields.io/badge/lifecycle-maturing-green.svg" />
 </p>
 
