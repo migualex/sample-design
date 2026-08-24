@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/lifecycle-maturing-green.svg" />
 </p>
 
-Ferramenta desenvolvida no âmbito da semiautomatização do PRODES Amazônia para a coleta interativa de amostras destinadas ao treinamento de modelos de inteligência artificial, como TempCNN e LTAE, utilizando o pacote sits (Satellite Image Time Series Analysis for Earth Observation Data Cubes). As funcionalidades incluem integração com PostgreSQL/PostGIS, autenticação de usuários, gerenciamento de classes personalizadas e acompanhamento em tempo real com sincronização via WFS.
+Ferramenta para coleta interativa de amostras voltadas ao treinamento de modelos de inteligência artificial. Oferece integração ao PostgreSQL/PostGIS, autenticação de usuários, gestão de classes personalizadas e acompanhamento com sincronização em tempo real via WFS.
 
 ## Instalação
 
