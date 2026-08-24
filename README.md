@@ -4,8 +4,8 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/license-GPL--3.0-blue" />
-  <img src="https://img.shields.io/badge/lifecycle-maturing-green.svg" />
+  <img src="https://img.shields.io/badge/License-GPLv3-blue" />
+  <img src="https://img.shields.io/badge/Lifecycle-maturing-green.svg" />
 </p>
 
 Ferramenta para coleta interativa de amostras voltadas ao treinamento de modelos de inteligência artificial. Oferece integração ao PostgreSQL/PostGIS, autenticação de usuários, gestão de classes personalizadas e acompanhamento com sincronização em tempo real via WFS.
