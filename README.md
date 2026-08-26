@@ -7,7 +7,9 @@
 
 <img src="icons/sample_design_icon.png" align="right" alt="Sample Design" width="120"/>
 
-Ferramenta para coleta interativa de amostras voltadas ao treinamento de modelos de inteligência artificial. Oferece integração ao PostgreSQL/PostGIS, autenticação de usuários, gestão de classes personalizadas e acompanhamento com sincronização em tempo real via WFS.
+<p>Ferramenta para coleta interativa de amostras voltadas ao treinamento de modelos de inteligência artificial, fornece integração ao PostgreSQL/PostGIS, autenticação de usuários, gestão de classes personalizadas e acompanhamento com sincronização em tempo real via WFS.</p>
+
+<p>Desenvolvido dentro do âmbito de semiautomatização do Prodes Amazônia.</p>
 
 ## Instalação
 
