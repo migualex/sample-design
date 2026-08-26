@@ -1,15 +1,15 @@
 # Sample Design
-
 <p align="center">
   <img src="https://img.shields.io/badge/License-GPLv3-blue" />
   <img src="https://img.shields.io/badge/Lifecycle-maturing-green.svg" />
+  <img src="https://img.shields.io/badge/Python-3.11.9-3776AB?logo=python&logoColor=white" />
 </p>
 
 <img src="icons/sample_design_icon.png" align="right" alt="Sample Design" width="120"/>
 
 <p>Ferramenta para coleta interativa de amostras voltadas ao treinamento de modelos de inteligência artificial, fornece integração ao PostgreSQL/PostGIS, autenticação de usuários, gestão de classes personalizadas e acompanhamento com sincronização em tempo real via WFS.</p>
 
-<p>O plugin foi desenvolvido no âmbito da semiautomatização do Prodes, com o objetivo de atender à demanda de coleta de amostras em diferentes ecorregiões da Amazônia, visando ao treinamento e à classificação de tiles do Sentinel-2 por meio do pacote [sits](https://e-sensing.github.io/sitsbook/).</p>
+<p>O plugin foi desenvolvido no âmbito da semiautomatização do Prodes, com o objetivo de atender à demanda de coleta de amostras em diferentes ecorregiões da Amazônia, visando ao treinamento e à classificação de tiles do Sentinel-2 por meio do pacote <a href="https://e-sensing.github.io/sitsbook/" target="_blank">sits</a>.</p>
 
 ## Instalação
 
