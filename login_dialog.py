@@ -354,6 +354,19 @@ class LoginDialog(QDialog):
                 self.lbl_err.setText(f'✗  {msg}')
                 return
         audit = self.chk_audit.isChecked()
+        client = getattr(self.vs_api, 'client', None)
+        if client is not None and client.api_key:
+            # each user works only with his own access key
+            who = client.whoami()
+            if not who:
+                self.lbl_err.setText('✗  A API não confirmou o dono da chave. Atualize a API.')
+                return
+            if who[0].strip().lower() != user.strip().lower():
+                self.lbl_err.setText(f'✗  Esta chave é de "{who[0]}". Use o seu usuário e a sua própria chave.')
+                return
+            if audit and who[1] != 'admin':
+                self.lbl_err.setText('✗  Sua chave não tem permissão de auditor.')
+                return
         self.user_info = {
             'username': user, 'nome_completo': user,
             'is_admin': user in API_ADMINS,  # no PostgreSQL: db_config.API_ADMINS

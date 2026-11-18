@@ -158,7 +158,7 @@ PROJETOS_POR_BIOMA = {
 # and each request may lose ~2 s. For a published API use the HTTPS link,
 # e.g. 'https://servidor.inpe.br/sampledesign/api'
 API_LOCAL_URL     = 'http://127.0.0.1:5000'
-API_TIMEOUT_S     = 20
+API_TIMEOUT_S     = 60   # slow links (Tailscale Funnel) need time for pages with geometry
 API_PAGE_SIZE     = 1000  # must be <= pygeoapi server.limits.max_items
 
 # Published API access (leave empty for the local API without password).
@@ -197,7 +197,7 @@ API_PROJECTS = {
     ('Amazônia', 'Não Floresta'): {
         'amostras': 'nf_output', 'tarefas': 'nf_tasks', 'tiles': 'tiles_nf', 'classes': 'nf_classes',
         'modos': ('square', 'polygon', 'point'), 'campos': ('data_ref', 'tipo_geom'),
-        'max_scale': 50000,
+        'max_scale': 10000,
         # PRODES 2026: images of July 2026, 2025 and 2024 (lowest cloud cover)
         'ano_prodes': 2026, 'imagens': 'mes_menor_nuvem', 'anos_imagens': (2026, 2025, 2024),
         'mes_imagens': 7,

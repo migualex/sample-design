@@ -322,6 +322,33 @@ class ApiClient:
             return False, f'Coleções ausentes na API: {", ".join(faltando)}'
         return True, ''
 
+    def whoami(self):
+        """(user, profile) that owns the access key, or None if the API does not say."""
+        try:
+            status, _, raw = self._request('GET', '/sampledesign/quem-sou')
+        except ApiError:
+            return None
+        if status != 200:
+            return None
+        # the gatekeeper answers {'code': 'OK', 'description': '<json>'}
+        try:
+            info = json.loads((self._json(raw) or {}).get('description') or '{}')
+        except ValueError:
+            return None
+        return (info.get('usuario'), info.get('perfil')) if info.get('usuario') else None
+
+    def first_item(self, collection, skip_geometry=False):
+        """One feature of the collection (limit=1), for checks: a full page of cells with
+        geometry is several MB and times out on slow links."""
+        params = self._read_params(collection, {'f': 'json', 'limit': 1})
+        if skip_geometry:
+            params['skipGeometry'] = 'true'
+        status, _, raw = self._request('GET', self._item_path(collection), params)
+        if status != 200:
+            raise ApiError(f'Erro ao consultar {collection}: ' + self._error_text(status, raw), status, raw)
+        feats = (self._json(raw) or {}).get('features') or []
+        return feats[0] if feats else None
+
     def iter_items(self, collection, filters=None, skip_geometry=False, properties=None):
         """Iterates over every feature of a collection (paged)."""
         offset = 0
@@ -1060,7 +1087,7 @@ class PantanalVSApi:
             return erros, avisos
         # cells
         try:
-            amostra = next(self.client.iter_items(self.col_tarefas), None)
+            amostra = self.client.first_item(self.col_tarefas)
         except ApiError as e:
             return [f'{self.col_tarefas}: {e}'], avisos
         if amostra is None:
@@ -1094,7 +1121,7 @@ class PantanalVSApi:
                               f'um tile — o bloqueio é aplicado em todas as linhas da célula.')
         # tiles
         try:
-            t = next(self.client.iter_items(self.col_tiles), None)
+            t = self.client.first_item(self.col_tiles)
             if t is None:
                 erros.append(f'{self.col_tiles}: coleção vazia.')
             else:
@@ -1111,7 +1138,7 @@ class PantanalVSApi:
                 falta = [c for c in self.SAMPLE_FIELDS if c not in q]
                 if falta:
                     erros.append(f'{self.col_amostras}: colunas ausentes: {", ".join(falta)}')
-            next(self.client.iter_items(self.col_amostras, skip_geometry=True), None)
+            self.client.first_item(self.col_amostras, skip_geometry=True)
         except ApiError as e:
             erros.append(f'{self.col_amostras}: {e}')
         return erros, avisos

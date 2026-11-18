@@ -225,7 +225,7 @@ class ApiEndpointWidget(QWidget):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         QApplication.processEvents()
         try:
-            client = ApiClient(base_url=url, api_key=key, timeout=15)
+            client = ApiClient(base_url=url, api_key=key)
             ok, msg = client.ping()
             client.close()
         finally:

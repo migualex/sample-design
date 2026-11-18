@@ -1113,6 +1113,23 @@ class SamplerDock(QDockWidget):
     # ═══════════════════════════════════════════════════════════════
     # Online API address (Pantanal VS)
     # ═══════════════════════════════════════════════════════════════
+    def _vs_key_owner_ok(self):
+        """
+        Each user works only with his own access key: the key in use must belong to the
+        logged user. Returns (ok, message). Without a key (test API) there is nothing to check.
+        """
+        client = getattr(self.vs_api, 'client', None)
+        user = (self.user_info or {}).get('username')
+        if client is None or not client.api_key or not user:
+            return True, None
+        who = client.whoami()
+        if not who:
+            return False, 'A API não confirmou o dono da chave de acesso. Atualize a API.'
+        if who[0].strip().lower() != user.strip().lower():
+            return False, (f'Esta chave de acesso é de "{who[0]}". '
+                           'Use a sua própria chave.')
+        return True, None
+
     def _vs_ask_api(self, title, message, parent=None, url=None, ok_text='Conectar'):
         """Asks for (and tests) the API address and key. True if connected."""
         dlg = ApiEndpointDialog(parent or self, title, message,
@@ -1123,6 +1140,10 @@ class SamplerDock(QDockWidget):
         url, key = dlg.endpoint()
         self.vs_api.set_endpoint(url, key)
         self._api_samples_cache = None
+        ok, msg = self._vs_key_owner_ok()
+        if not ok:
+            QMessageBox.warning(parent or self, title, msg)
+            return False
         self._log(f'API conectada: {url}')
         return True
 
@@ -2296,6 +2317,9 @@ class SamplerDock(QDockWidget):
 
     def _vs_attach_package(self, wp, cell_ids, existed, import_server=True):
         """Adds the package cells, tile and samples layers to the project."""
+        ok_key, msg_key = self._vs_key_owner_ok()
+        if not ok_key:
+            return False, msg_key
         username = self.user_info['username']
         restored = existed and self._vs_offer_workspace(wp)
         if not restored:
@@ -3021,6 +3045,10 @@ class SamplerDock(QDockWidget):
         if api_url != self.vs_api.client.base_url or api_key != self.vs_api.client.api_key:
             self.vs_api.set_endpoint(api_url, api_key)
             self._api_samples_cache = None
+        ok_key, msg_key = self._vs_key_owner_ok()
+        if not ok_key:
+            QMessageBox.warning(self, 'Finalizar trabalho', msg_key + ' Nada foi enviado.')
+            return
         if self.work_package is not None:
             try:
                 self.work_package.set_meta({'api_url': api_url})
