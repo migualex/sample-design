@@ -5,12 +5,10 @@
     </linearGradient>
     <clipPath id="tileclip"><rect x="872" y="44" width="272" height="272" rx="14"/></clipPath>
   </defs>
-  <rect x="1" y="1" width="1278" height="358" rx="26" fill="url(#bg)" stroke="#E7E1D2" stroke-width="2"/>
   <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
     <text x="72" y="150" font-size="66" font-weight="700" fill="#1C2B39" letter-spacing="-1">Sample Design</text>
     <rect x="76" y="172" width="64" height="6" rx="3" fill="#F5A800"/>
     <text x="72" y="222" font-size="23" fill="#5B6B78">Coleta de amostras de uso e cobertura da terra no QGIS</text>
-    <g><rect x="72" y="250" width="55" height="30" rx="15" fill="#FFFFFF" stroke="#E2DCCD"/><text x="100" y="270" text-anchor="middle" font-size="14" fill="#5B6B78">Ponto</text></g><g><rect x="137.0" y="250" width="80" height="30" rx="15" fill="#FFFFFF" stroke="#E2DCCD"/><text x="177" y="270" text-anchor="middle" font-size="14" fill="#5B6B78">Quadrado</text></g><g><rect x="226.6" y="250" width="80" height="30" rx="15" fill="#FFFFFF" stroke="#E2DCCD"/><text x="266" y="270" text-anchor="middle" font-size="14" fill="#5B6B78">Polígono</text></g>
   </g>
   
     <g clip-path="url(#tileclip)">
