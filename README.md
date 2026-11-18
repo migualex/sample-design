@@ -1,17 +1,12 @@
-<p align="center">
-  <img src="icons/sample_design_icon.png" alt="Sample Design" width="140"/>
-</p>
-
-<h1 align="center">Sample Design</h1>
-
-<p align="center">
-  Plugin do QGIS para coleta de amostras de uso e cobertura da terra
-</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+  <img src="assets/banner-light.svg" alt="Sample Design: coleta de amostras de uso e cobertura da terra no QGIS" width="100%">
+</picture>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/versão-0.76-2E86C1" />
+  <img src="https://img.shields.io/badge/versão-0.76-F5A800" />
   <img src="https://img.shields.io/badge/QGIS-3.40%20a%204.x-589632?logo=qgis&logoColor=white" />
-  <img src="https://img.shields.io/badge/licença-GPLv3-blue" />
+  <img src="https://img.shields.io/badge/licença-GPLv3-5A7080" />
 </p>
 
 ---
@@ -47,9 +42,3 @@ O passo a passo completo está no [manual](MANUAL.md).
 ## Licença
 
 Distribuído sob a [GNU General Public License v3.0](LICENSE.txt).
-
----
-
-<p align="center">
-  Desenvolvido por Miguel Alexandre da Cunha · Programa BiomasBR · INPE
-</p>
