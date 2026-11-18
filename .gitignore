@@ -21,6 +21,15 @@ __pycache__/
 Thumbs.db
 desktop.ini
 
-# Credenciais — nunca versionar
+# Credenciais: nunca versionar
+db_secrets.py
 secrets.py
 .env
+
+# Dados de trabalho e pacotes gerados
+*.gpkg
+*.gpkg-shm
+*.gpkg-wal
+*.tif
+*.aux.xml
+*.zip

@@ -43,16 +43,9 @@ Importante: utilize sempre essa camada para edição, pois ela está conectada d
 ![](figures/image7.png)
 ![](figures/image16.png)
 
-### Relatório
-
-4. Relatório:
-   1. Botão de "Gerar Relatório" para obter os quantitativos totais registrados no banco de dados.
-
-![](figures/image12.png)
-
 ### Ferramentas de Edição
 
-5. Ferramentas de Edição
+4. Ferramentas de Edição
 
 #### Botão "Desfazer"
 
@@ -68,7 +61,7 @@ Ambas as alterações são aplicadas diretamente no banco de dados e na tabela d
 
 ## Perfil Administrador
 
-6. Botão "Gerenciar Usuários":
+5. Botão "Gerenciar Usuários":
 
 Permite: Conceder ou remover permissão de Administrador e de Auditor.
 
@@ -80,7 +73,7 @@ Permissões disponíveis: Adicionar, Excluir e Reclassificar amostras.
 
 ![](figures/image4.png)
 
-### 7. Botão "Reclass"
+### 6. Botão "Reclass"
 
 - Clique na ferramenta "Selecionar Feições":
 
@@ -98,7 +91,7 @@ Permissões disponíveis: Adicionar, Excluir e Reclassificar amostras.
 
 ## Sair
 
-8. Botão "Sair" para Encerrar Sessão.
+7. Botão "Sair" para Encerrar Sessão.
 
 - Clique em Sair para finalizar o acesso ao sistema. A camada de amostras será salva automaticamente.
 
@@ -185,14 +178,9 @@ O sistema apresenta um tipo de contagem:
 
 Filtros disponíveis: Tile, Ecorregião.
 
-### Relatório
-
-12. Relatório:
-    - Clique em Gerar Relatório para obter os quantitativos totais registrados no banco de dados.
-
 ### Ferramentas de Edição
 
-13. Ferramentas de Edição
+12. Ferramentas de Edição
 
 #### Desfazer
 
@@ -206,7 +194,7 @@ Ambas as modificações são aplicadas diretamente no Geopackage e na tabela de 
 
 ## Exportação para WFS
 
-14. Exportação para WFS
+13. Exportação para WFS
 
 #### Botão "Exportar para WFS"
 
@@ -232,7 +220,7 @@ Importante:
 
 ## Fechar Geopackage
 
-15. Fechar Geopackage:
+14. Fechar Geopackage:
 
 Ao finalizar as atividades:
 

@@ -2,7 +2,11 @@
 # Created by Miguel Alexandre da Cunha
 
 import os
-from qgis.PyQt.QtWidgets import QAction
+# QAction lives in QtWidgets on Qt5 and in QtGui on Qt6 (QGIS 4)
+try:
+    from qgis.PyQt.QtGui import QAction
+except ImportError:
+    from qgis.PyQt.QtWidgets import QAction
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtCore import Qt
 
@@ -37,13 +41,14 @@ class SampleDesign:
         if checked:
             if self.dock is None:
                 self.dock = SamplerDock(self.iface, self)
-                self.iface.addDockWidget(Qt.RightDockWidgetArea, self.dock)
+                self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
                 self.dock.hide()
                 self.tool = SamplerTool(self.canvas, self.dock)
 
                 self.tool.set_mode(self.dock.get_draw_mode())
                 self.dock.radio_square.toggled.connect(lambda: self.tool.set_mode(self.dock.get_draw_mode()))
                 self.dock.radio_polygon.toggled.connect(lambda: self.tool.set_mode(self.dock.get_draw_mode()))
+                self.dock.radio_point.toggled.connect(lambda: self.tool.set_mode(self.dock.get_draw_mode()))
 
             self.prev_tool = self.canvas.mapTool()
             self.canvas.setMapTool(self.tool)
@@ -63,5 +68,9 @@ class SampleDesign:
         self.iface.removePluginMenu('&Sample Design', self.action)
         self.iface.removeToolBarIcon(self.action)
         if self.dock:
+            try:
+                self.dock.unload()  # drops the in-memory images and the ↑/↓/F9 key filter
+            except Exception:
+                pass
             self.iface.removeDockWidget(self.dock)
             self.dock.deleteLater()

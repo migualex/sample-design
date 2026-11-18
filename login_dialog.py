@@ -12,7 +12,11 @@ from qgis.PyQt.QtWidgets import (
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QPixmap, QPalette
 
-from .db_config import BIOMAS
+from .db_config import API_PROJECTS, PROJETOS_POR_BIOMA
+try:
+    from .db_config import API_ADMINS
+except ImportError:
+    API_ADMINS = []
 from .db_manager import DBManager
 
 
@@ -21,7 +25,7 @@ def _detect_dark_theme():
         app = QApplication.instance()
         if app is None:
             return False
-        return app.palette().color(QPalette.Window).lightness() < 128
+        return app.palette().color(QPalette.ColorRole.Window).lightness() < 128
     except Exception:
         return False
 
@@ -78,17 +82,20 @@ def _pill(color, txt='#FFFFFF'):
 
 class LoginDialog(QDialog):
 
-    def __init__(self, db: DBManager, parent=None):
+    def __init__(self, db: DBManager, parent=None, api_only=False, vs_api=None):
         super().__init__(parent)
         self.db           = db
+        self.api_only     = api_only  # PostgreSQL unreachable → Pantanal VS (API) only
+        self.vs_api       = vs_api
         self.user_info    = None
         self.biome        = None
         self.project_type = None
+        self.audit_mode   = False
 
         self.setWindowTitle('Sample Design')
         self.setMinimumWidth(360)
         self.setMaximumWidth(400)
-        self.setWindowFlag(Qt.WindowContextHelpButtonHint, False)
+        self.setWindowFlag(Qt.WindowType.WindowContextHelpButtonHint, False)
         self.setStyleSheet(f"""
             QDialog  {{ background: {C_BG}; }}
             QWidget  {{ background: {C_BG}; color: {C_TEXT};
@@ -111,7 +118,7 @@ class LoginDialog(QDialog):
         icon_path  = os.path.join(plugin_dir, 'icons', 'sample_design_icon.png')
         if os.path.exists(icon_path):
             ico_lbl = QLabel()
-            px = QPixmap(icon_path).scaled(36, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            px = QPixmap(icon_path).scaled(36, 36, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
             ico_lbl.setPixmap(px)
             ico_lbl.setFixedSize(36, 36)
             hdr.addWidget(ico_lbl)
@@ -137,6 +144,21 @@ class LoginDialog(QDialog):
         self.stack.addWidget(self._page_login())
         self.stack.addWidget(self._page_register())
         root.addWidget(self.stack)
+        if self.api_only:
+            self._apply_api_only_mode()
+
+    def _apply_api_only_mode(self):
+        """No PostgreSQL: only the API projects (Pantanal VS, Amazônia NF) are offered."""
+        self.combo_bioma.blockSignals(True)
+        self.combo_bioma.clear()
+        self.combo_bioma.addItems(sorted({b for b, _ in API_PROJECTS}))
+        self.combo_bioma.blockSignals(False)
+        self._update_projetos()
+        self.edit_pass.setPlaceholderText('não verificada no modo API')
+        self.btn_criar_conta.setVisible(False)
+        self.lbl_sem_acesso.setVisible(False)
+        self.lbl_err.setStyleSheet(f'color: {C_MUTED}; font-size: 8pt;')
+        self.lbl_err.setText('PostgreSQL indisponível. Entrando pela API.')
 
     def _page_login(self):
         pg  = QWidget()
@@ -153,7 +175,7 @@ class LoginDialog(QDialog):
         lay.addWidget(self._lbl('Senha'))
         self.edit_pass = QLineEdit()
         self.edit_pass.setPlaceholderText('••••••••')
-        self.edit_pass.setEchoMode(QLineEdit.Password)
+        self.edit_pass.setEchoMode(QLineEdit.EchoMode.Password)
         self.edit_pass.setMinimumHeight(36)
         self.edit_pass.returnPressed.connect(self._do_login)
         lay.addWidget(self.edit_pass)
@@ -168,8 +190,18 @@ class LoginDialog(QDialog):
         lay.addWidget(self._lbl('Projeto'))
         self.combo_projeto = QComboBox()
         self.combo_projeto.setMinimumHeight(36)
-        self.combo_projeto.addItems(['Prodes', 'Vegetação Secundária'])
+        self._update_projetos()
         lay.addWidget(self.combo_projeto)
+
+        lay.addSpacing(6)
+
+        self.chk_audit = QCheckBox('Entrar como auditor')
+        self.chk_audit.setCursor(Qt.CursorShape.PointingHandCursor)
+        lay.addWidget(self.chk_audit)
+        lbl_audit_hint = QLabel('Só para contas com permissão de auditoria.')
+        lbl_audit_hint.setStyleSheet(f'color:{C_MUTED}; font-size:7.5pt;')
+        lbl_audit_hint.setWordWrap(True)
+        lay.addWidget(lbl_audit_hint)
 
         lay.addSpacing(8)
 
@@ -190,10 +222,12 @@ class LoginDialog(QDialog):
         lay.addSpacing(12)
 
         row = QHBoxLayout()
-        row.addWidget(self._small('Ainda não tem acesso?'))
+        self.lbl_sem_acesso = self._small('Ainda não tem acesso?')
+        row.addWidget(self.lbl_sem_acesso)
         btn2 = QPushButton('Criar conta')
+        self.btn_criar_conta = btn2
         btn2.setFlat(True)
-        btn2.setCursor(Qt.PointingHandCursor)
+        btn2.setCursor(Qt.CursorShape.PointingHandCursor)
         btn2.setStyleSheet(
             f'color:{C_LINK}; font-weight:600; font-size:8.5pt;'
             f'border:none; background:transparent; padding:0;'
@@ -204,8 +238,19 @@ class LoginDialog(QDialog):
         lay.addLayout(row)
         return pg
 
+    def _update_projetos(self):
+        """Fills the project combo for the selected biome."""
+        bioma = self.combo_bioma.currentText()
+        self.combo_projeto.blockSignals(True)
+        self.combo_projeto.clear()
+        projetos = PROJETOS_POR_BIOMA.get(bioma, [])
+        if self.api_only:
+            projetos = [p for p in projetos if (bioma, p) in API_PROJECTS]
+        self.combo_projeto.addItems(projetos)
+        self.combo_projeto.blockSignals(False)
+
     def _on_biome_changed(self, idx):
-        pass
+        self._update_projetos()
 
     def _page_register(self):
         pg  = QWidget()
@@ -229,7 +274,7 @@ class LoginDialog(QDialog):
             field.setPlaceholderText(hint)
             field.setMinimumHeight(36)
             if 'pass' in attr:
-                field.setEchoMode(QLineEdit.Password)
+                field.setEchoMode(QLineEdit.EchoMode.Password)
             setattr(self, attr, field)
             lay.addWidget(field)
             if attr != 'edit_reg_pass2':
@@ -261,7 +306,7 @@ class LoginDialog(QDialog):
         row = QHBoxLayout()
         btn2 = QPushButton('← Voltar')
         btn2.setFlat(True)
-        btn2.setCursor(Qt.PointingHandCursor)
+        btn2.setCursor(Qt.CursorShape.PointingHandCursor)
         btn2.setStyleSheet(
             f'color:{C_LINK}; font-weight:600; font-size:8.5pt;'
             f'border:none; background:transparent; padding:0;'
@@ -278,6 +323,9 @@ class LoginDialog(QDialog):
         bioma = self.combo_bioma.currentText()
         projeto = self.combo_projeto.currentText()
 
+        if self.api_only:
+            self._do_login_api_only(user, bioma, projeto)
+            return
         if not user or not pwd:
             self.lbl_err.setText('Preencha usuário e senha.')
             return
@@ -289,6 +337,31 @@ class LoginDialog(QDialog):
         self.user_info = result
         self.biome     = bioma
         self.project_type = projeto
+        self.audit_mode = bool(self.chk_audit.isChecked() and result.get('is_auditor', False))
+        self.accept()
+
+    def _do_login_api_only(self, user, bioma, projeto):
+        self.lbl_err.setStyleSheet(f'color: {C_ERR}; font-size: 8pt;')
+        if not user:
+            self.lbl_err.setText('Preencha o usuário.')
+            return
+        if ' ' in user:
+            self.lbl_err.setText('Usuário não pode ter espaços.')
+            return
+        if self.vs_api is not None:
+            ok, msg = self.vs_api.ping()
+            if not ok:
+                self.lbl_err.setText(f'✗  {msg}')
+                return
+        audit = self.chk_audit.isChecked()
+        self.user_info = {
+            'username': user, 'nome_completo': user,
+            'is_admin': user in API_ADMINS,  # no PostgreSQL: db_config.API_ADMINS
+            'is_auditor': audit, 'auth_local': True,
+        }
+        self.biome        = bioma
+        self.project_type = projeto
+        self.audit_mode   = audit
         self.accept()
 
     def _do_register(self):
@@ -339,6 +412,6 @@ class LoginDialog(QDialog):
 
     def _sep(self):
         line = QFrame()
-        line.setFrameShape(QFrame.HLine)
+        line.setFrameShape(QFrame.Shape.HLine)
         line.setStyleSheet(f'color:{C_BORDER}; max-height:1px;')
         return line

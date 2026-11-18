@@ -2,6 +2,7 @@
 # Created by Miguel Alexandre da Cunha
 
 import hashlib
+import json
 import re
 from datetime import datetime, timedelta
 
@@ -21,6 +22,10 @@ from .db_config import (
     BIOMAS, CLASSES_POR_BIOMA,
     DATABASE_CONFIG,
 )
+
+
+# classes_custom.analyst value of the project-wide class list
+PROJECT_CLASSES_OWNER = '__projeto__'
 
 
 def _hash_password(password: str) -> str:
@@ -56,12 +61,13 @@ class DBManager:
             'tiles': ('public', 'tiles_amz'),
             'subregioes': None,
         },
-        ('Amazônia', 'Vegetação Secundária'): {
-            'schema': 'veg_sec',
-            'table': 'vs_amz_2026',
-            'tiles': ('public', 'tiles_amz'),
-            'subregioes': None,
-        },
+        # disabled project, kept for when it is enabled again
+        # ('Amazônia', 'Vegetação Secundária'): {
+        #     'schema': 'veg_sec',
+        #     'table': 'vs_amz_2026',
+        #     'tiles': ('public', 'tiles_amz'),
+        #     'subregioes': None,
+        # },
         ('Pantanal', 'Prodes'): {
             'schema': 'prodes',
             'table': 'prodes_ptn_2026',
@@ -79,20 +85,23 @@ class DBManager:
     def __init__(self):
         self._conn = None
 
-    def _admin_conn(self):
+    @staticmethod
+    def _connect(host, port, dbname, user, password):
         if not PSYCOPG2_OK:
             raise RuntimeError(
                 'A biblioteca psycopg2 não está instalada.\n'
                 'No OSGeo4W Shell execute:\n'
                 '  pip install psycopg2-binary'
             )
-        conn = psycopg2.connect(
-            host=DB_HOST, port=DB_PORT, dbname=DB_NAME,
-            user=DB_ADMIN_USER, password=DB_ADMIN_PASS,
-            connect_timeout=8
-        )
+        if not host:
+            raise RuntimeError('Banco de dados não configurado (db_secrets.py ausente).')
+        conn = psycopg2.connect(host=host, port=port, dbname=dbname,
+                                user=user, password=password, connect_timeout=8)
         conn.autocommit = False
         return conn
+
+    def _admin_conn(self):
+        return self._connect(DB_HOST, DB_PORT, DB_NAME, DB_ADMIN_USER, DB_ADMIN_PASS)
 
     def _get_project_conn_params(self, biome, project_type):
         return DATABASE_CONFIG.get((biome, project_type),
@@ -104,30 +113,12 @@ class DBManager:
                                     'user_pass': DB_USER_PASS})
 
     def _project_admin_conn(self, biome, project_type):
-        if not PSYCOPG2_OK:
-            raise RuntimeError('psycopg2 não instalado.')
-        params = self._get_project_conn_params(biome, project_type)
-        conn = psycopg2.connect(
-            host=params['host'], port=params['port'],
-            dbname=params['dbname'],
-            user=params['admin_user'], password=params['admin_pass'],
-            connect_timeout=8
-        )
-        conn.autocommit = False
-        return conn
+        p = self._get_project_conn_params(biome, project_type)
+        return self._connect(p['host'], p['port'], p['dbname'], p['admin_user'], p['admin_pass'])
 
     def _project_user_conn(self, biome, project_type):
-        if not PSYCOPG2_OK:
-            raise RuntimeError('psycopg2 não instalado.')
-        params = self._get_project_conn_params(biome, project_type)
-        conn = psycopg2.connect(
-            host=params['host'], port=params['port'],
-            dbname=params['dbname'],
-            user=params['user_user'], password=params['user_pass'],
-            connect_timeout=8
-        )
-        conn.autocommit = False
-        return conn
+        p = self._get_project_conn_params(biome, project_type)
+        return self._connect(p['host'], p['port'], p['dbname'], p['user_user'], p['user_pass'])
 
     def test_connection(self):
         if not PSYCOPG2_OK:
@@ -304,14 +295,14 @@ class DBManager:
             conn.close()
 
     def ensure_pantanal_vs_tables(self):
-        """Creates/updates ptn_grade_tarefas table and backup table, ensuring audit columns."""
+        """Creates ptn_tasks if needed and adds missing columns."""
         conn = self._project_admin_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
         try:
             cur.execute("""
-                CREATE TABLE IF NOT EXISTS public.ptn_grade_tarefas (
+                CREATE TABLE IF NOT EXISTS public.ptn_tasks (
                     cell_oid      VARCHAR(150) PRIMARY KEY,
-                    geom          GEOMETRY(Polygon, 4674),
+                    tile_2        VARCHAR(150),
                     analyst_1     VARCHAR(100),
                     start_date_1  DATE,
                     finished_1    BOOLEAN DEFAULT FALSE,
@@ -319,43 +310,24 @@ class DBManager:
                     analyst_2     VARCHAR(100),
                     start_date_2  DATE,
                     finished_2    BOOLEAN DEFAULT FALSE,
-                    end_date_2    DATE
+                    end_date_2    DATE,
+                    new_col       TEXT
                 );
             """)
+            # older tables may lack some columns
+            colunas = {
+                'tile_2': 'VARCHAR(150)',
+                'analyst_1': 'VARCHAR(100)', 'start_date_1': 'DATE',
+                'finished_1': 'BOOLEAN DEFAULT FALSE', 'end_date_1': 'DATE',
+                'analyst_2': 'VARCHAR(100)', 'start_date_2': 'DATE',
+                'finished_2': 'BOOLEAN DEFAULT FALSE', 'end_date_2': 'DATE',
+            }
+            for col, col_type in colunas.items():
+                cur.execute(f"ALTER TABLE public.ptn_tasks ADD COLUMN IF NOT EXISTS {col} {col_type};")
 
-            colunas_v1 = ['geom', 'analyst_1', 'start_date_1', 'finished_1', 'end_date_1']
-            for col in colunas_v1:
-                cur.execute(f"""
-                    DO $$
-                    BEGIN
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_schema = 'public'
-                              AND table_name   = 'ptn_grade_tarefas'
-                              AND column_name  = '{col}'
-                        ) THEN
-                            ALTER TABLE public.ptn_grade_tarefas ADD COLUMN {col}
-                            {'GEOMETRY(Polygon,4674)' if col == 'geom' else 'VARCHAR(100)' if col == 'analyst_1' else 'DATE' if col in ('start_date_1','end_date_1') else 'BOOLEAN'};
-                        END IF;
-                    END $$;
-                """)
-
-            colunas_v2 = ['analyst_2', 'start_date_2', 'finished_2', 'end_date_2']
-            for col in colunas_v2:
-                cur.execute(f"""
-                    DO $$
-                    BEGIN
-                        IF NOT EXISTS (
-                            SELECT 1 FROM information_schema.columns
-                            WHERE table_schema = 'public'
-                              AND table_name   = 'ptn_grade_tarefas'
-                              AND column_name  = '{col}'
-                        ) THEN
-                            ALTER TABLE public.ptn_grade_tarefas ADD COLUMN {col}
-                            {'VARCHAR(100)' if col == 'analyst_2' else 'DATE' if col in ('start_date_2','end_date_2') else 'BOOLEAN'};
-                        END IF;
-                    END $$;
-                """)
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ptn_tasks_tile2 ON public.ptn_tasks(tile_2);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ptn_tasks_analyst1 ON public.ptn_tasks(analyst_1);")
+            cur.execute("CREATE INDEX IF NOT EXISTS idx_ptn_tasks_finished1 ON public.ptn_tasks(finished_1);")
 
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS vs_2024.output_backup (LIKE vs_2024.output INCLUDING ALL);
@@ -370,69 +342,100 @@ class DBManager:
             conn.close()
 
     def get_pantanal_vs_tiles(self):
-        """Returns list of available tile names from tiles_ptn."""
+        """Tile names available in ptn_tasks."""
         conn = self._project_admin_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
         try:
-            cur.execute("SELECT tile FROM public.tiles_ptn ORDER BY tile")
+            cur.execute("SELECT DISTINCT tile_2 FROM public.ptn_tasks WHERE tile_2 IS NOT NULL ORDER BY tile_2")
             return [r[0] for r in cur.fetchall()]
-        except:
+        except Exception:
             return []
         finally:
             cur.close()
             conn.close()
 
     def get_pantanal_vs_tiles_with_status(self):
-        """Returns list of dicts with tile, status (free/locked/finished), analyst, etc."""
+        """Tiles with aggregated status and dates."""
         conn = self._project_admin_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
         try:
-            cur.execute("SELECT tile FROM public.tiles_ptn ORDER BY tile")
-            tiles = [row[0] for row in cur.fetchall()]
-            tile_status = {}
-            for tile in tiles:
-                tile_status[tile] = {'tile': tile, 'status': 'free', 'analyst': '', 'start_date': '', 'finished': False}
             cur.execute("""
-                SELECT t.tile, g.analyst_1, g.start_date_1, g.finished_1, g.end_date_1
-                FROM public.tiles_ptn t
-                JOIN public.ptn_grade_tarefas g
-                ON ST_Intersects(t.geom, g.geom)
+                SELECT
+                    tile_2,
+                    COUNT(*) AS total_cells,
+                    COUNT(*) FILTER (WHERE analyst_1 IS NOT NULL AND finished_1 = FALSE) AS locked,
+                    COUNT(*) FILTER (WHERE finished_1 = TRUE) AS finished,
+                    MIN(start_date_1) AS min_start1,
+                    MAX(end_date_1) AS max_end1,
+                    MIN(start_date_2) AS min_start2,
+                    MAX(end_date_2) AS max_end2,
+                    MAX(analyst_2) AS any_analyst2,
+                    BOOL_OR(finished_2) AS any_finished2,
+                    MIN(analyst_1) FILTER (WHERE analyst_1 IS NOT NULL AND finished_1 = FALSE) AS locked_analyst,
+                    MIN(analyst_1) FILTER (WHERE finished_1 = TRUE) AS finished_analyst
+                FROM public.ptn_tasks
+                WHERE tile_2 IS NOT NULL
+                GROUP BY tile_2
+                ORDER BY tile_2
             """)
-            for row in cur.fetchall():
-                tile, analyst, start, finished, end = row
-                if tile not in tile_status:
-                    continue
-                if analyst and not finished:
-                    tile_status[tile]['status'] = 'locked'
-                    tile_status[tile]['analyst'] = analyst
-                    tile_status[tile]['start_date'] = start.strftime('%Y-%m-%d') if start else ''
-                elif finished:
-                    if tile_status[tile]['status'] != 'locked':
-                        tile_status[tile]['status'] = 'finished'
-                        tile_status[tile]['analyst'] = analyst
-                        tile_status[tile]['end_date'] = end.strftime('%Y-%m-%d') if end else ''
-            return list(tile_status.values())
-        except:
+            rows = cur.fetchall()
+            results = []
+            for r in rows:
+                tile = r[0]
+                locked = r[2] if r[2] else 0
+                finished = r[3] if r[3] else 0
+                if locked == 0 and finished == 0:
+                    status = 'free'
+                    analyst = ''
+                elif locked > 0:
+                    status = 'locked'
+                    analyst = r[10] or ''
+                else:
+                    status = 'finished'
+                    analyst = r[11] or ''
+                start1 = r[4].strftime('%Y-%m-%d %H:%M') if r[4] else ''
+                end1 = r[5].strftime('%Y-%m-%d %H:%M') if r[5] else ''
+                start2 = r[6].strftime('%Y-%m-%d %H:%M') if r[6] else ''
+                end2 = r[7].strftime('%Y-%m-%d %H:%M') if r[7] else ''
+                auditor = r[8] or ''
+                finished2 = r[9] if r[9] else False
+
+                results.append({
+                    'tile': tile,
+                    'status': status,
+                    'analyst': analyst,
+                    'start_date_1': start1,
+                    'end_date_1': end1,
+                    'start_date_2': start2,
+                    'end_date_2': end2,
+                    'analyst_2': auditor,
+                    'finished_2': finished2,
+                })
+            return results
+        except Exception as e:
+            print(f'Erro em get_pantanal_vs_tiles_with_status: {e}')
             return []
         finally:
             cur.close()
             conn.close()
 
     def get_grids_for_tile_with_status(self, tile_name):
-        """ Returns cells with interpretation (1) and audit (2) status """
+        """Cells of a tile with interpretation and audit status."""
         conn = self._project_user_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
-        cur.execute("""
-            SELECT cell_oid,
-                analyst_1, start_date_1, finished_1, end_date_1,
-                analyst_2, start_date_2, finished_2, end_date_2
-            FROM public.ptn_grade_tarefas
-            WHERE tile_2 = %s
-            ORDER BY cell_oid
-        """, (tile_name,))
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+        try:
+            cur.execute("""
+                SELECT cell_oid,
+                    analyst_1, start_date_1, finished_1, end_date_1,
+                    analyst_2, start_date_2, finished_2, end_date_2
+                FROM public.ptn_tasks
+                WHERE tile_2 = %s
+                ORDER BY cell_oid
+            """, (tile_name,))
+            rows = cur.fetchall()
+        finally:
+            cur.close()
+            conn.close()
         return [
             {
                 'cell_oid': r[0],
@@ -449,31 +452,33 @@ class DBManager:
         ]
 
     def get_cell_analyst(self, cell_oid):
-        """ Returns the interpreter (analyst_1) of the cell """
+        """Interpreter (analyst_1) of the cell."""
         conn = self._project_user_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
-        cur.execute("SELECT analyst_1 FROM public.ptn_grade_tarefas WHERE cell_oid = %s", (cell_oid,))
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
+        try:
+            cur.execute("SELECT analyst_1 FROM public.ptn_tasks WHERE cell_oid = %s", (cell_oid,))
+            row = cur.fetchone()
+        finally:
+            cur.close()
+            conn.close()
         return row[0] if row else None
 
     def lock_cell(self, cell_oid, username):
-        """ Locks cell for interpretation – fills analyst_1 and start_date_1 """
+        """Locks a cell for interpretation (analyst_1, start_date_1)."""
         conn = self._project_user_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
         try:
             cur.execute("""
-                UPDATE public.ptn_grade_tarefas
+                UPDATE public.ptn_tasks
                 SET analyst_1 = %s,
                     start_date_1 = CURRENT_TIMESTAMP,
                     finished_1 = FALSE,
                     end_date_1 = NULL
                 WHERE cell_oid = %s
-                AND analyst_1 IS NULL
+                AND (analyst_1 IS NULL OR analyst_1 = %s)
                 AND finished_1 IS NOT TRUE
                 RETURNING cell_oid
-            """, (username, cell_oid))
+            """, (username, cell_oid, username))
             if cur.fetchone() is None:
                 conn.rollback()
                 return False, "Célula já ocupada ou não disponível."
@@ -487,12 +492,12 @@ class DBManager:
             conn.close()
 
     def unlock_cell(self, cell_oid, username):
-        """ Finalizes interpretation: sets finished_1 = TRUE, end_date_1 = NOW """
+        """Finishes interpretation (finished_1, end_date_1)."""
         conn = self._project_user_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
         try:
             cur.execute("""
-                UPDATE public.ptn_grade_tarefas
+                UPDATE public.ptn_tasks
                 SET finished_1 = TRUE,
                     end_date_1 = CURRENT_TIMESTAMP
                 WHERE cell_oid = %s
@@ -509,12 +514,12 @@ class DBManager:
             conn.close()
 
     def lock_cell_for_audit(self, cell_oid, auditor_username):
-        """ Auditor locks already interpreted cell (finished_1 = TRUE) not yet audited (finished_2 not TRUE) """
+        """Locks an interpreted cell (finished_1 = TRUE) for audit."""
         conn = self._project_user_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
         try:
             cur.execute("""
-                UPDATE public.ptn_grade_tarefas
+                UPDATE public.ptn_tasks
                 SET analyst_2 = %s,
                     start_date_2 = CURRENT_TIMESTAMP,
                     finished_2 = FALSE,
@@ -527,7 +532,7 @@ class DBManager:
             """, (auditor_username, cell_oid, auditor_username))
             if cur.fetchone() is None:
                 conn.rollback()
-                return False, "Célula não disponível para auditoria (já auditada ou interpretação não finalizada)."
+                return False, "Célula não disponível para auditoria."
             conn.commit()
             return True, None
         except Exception as e:
@@ -539,9 +544,8 @@ class DBManager:
 
     def finish_audit(self, cell_oid, auditor_username, interpreter_username):
         """
-        Finishes cell audit:
-        1. Copies label to label_audit where label_audit IS NULL (implicit agreement)
-        2. Sets finished_2 = TRUE, end_date_2 = NOW
+        Finishes the cell audit: copies label to label_audit where empty (implicit
+        agreement) and sets finished_2/end_date_2.
         """
         config = self._get_config('Pantanal', 'Vegetação Secundária')
         schema = config['schema']
@@ -550,10 +554,11 @@ class DBManager:
         conn_admin = self._project_admin_conn('Pantanal', 'Vegetação Secundária')
         cur = conn_admin.cursor()
         try:
+            # implicit agreement: label_audit = label
             cur.execute(f"""
                 UPDATE {schema}.{table} AS a
                 SET label_audit = a.label
-                FROM public.ptn_grade_tarefas AS g
+                FROM public.ptn_tasks AS g
                 WHERE g.cell_oid = %s
                 AND ST_Intersects(a.geom, g.geom)
                 AND a.analyst = %s
@@ -562,7 +567,7 @@ class DBManager:
             """, (cell_oid, interpreter_username, auditor_username))
 
             cur.execute("""
-                UPDATE public.ptn_grade_tarefas
+                UPDATE public.ptn_tasks
                 SET finished_2 = TRUE,
                     end_date_2 = CURRENT_TIMESTAMP
                 WHERE cell_oid = %s
@@ -582,8 +587,8 @@ class DBManager:
 
     def fill_audit_for_cell(self, cell_oid, auditor_username, interpreter_username):
         """
-        Fills the 'audit' column with the auditor's name for all polygons
-        of the interpreter belonging to the cell that still have no auditor.
+        Sets 'audit' to the auditor on the interpreter's samples in the cell that
+        have no auditor yet.
         """
         config = self._get_config('Pantanal', 'Vegetação Secundária')
         schema = config['schema']
@@ -594,7 +599,7 @@ class DBManager:
             cur.execute(f"""
                 UPDATE {schema}.{table} AS a
                 SET audit = %s
-                FROM public.ptn_grade_tarefas AS g
+                FROM public.ptn_tasks AS g
                 WHERE g.cell_oid = %s
                 AND ST_Intersects(a.geom, g.geom)
                 AND a.analyst = %s
@@ -610,12 +615,12 @@ class DBManager:
             conn.close()
 
     def admin_reset_cell(self, cell_oid):
-        """ Completely resets a cell (admin) – clears analyst_1/2, dates, etc. """
+        """Admin: fully resets a cell (analysts, dates, flags)."""
         conn = self._project_admin_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
         try:
             cur.execute("""
-                UPDATE public.ptn_grade_tarefas
+                UPDATE public.ptn_tasks
                 SET analyst_1 = NULL, start_date_1 = NULL, finished_1 = FALSE, end_date_1 = NULL,
                     analyst_2 = NULL, start_date_2 = NULL, finished_2 = FALSE, end_date_2 = NULL
                 WHERE cell_oid = %s
@@ -630,14 +635,59 @@ class DBManager:
             conn.close()
 
     def get_cell_geom(self, cell_oid):
-        """Returns cell geometry as WKT or None."""
+        """Cell geometry as WKT (or None)."""
         conn = self._project_admin_conn('Pantanal', 'Vegetação Secundária')
         cur = conn.cursor()
         try:
-            cur.execute("SELECT ST_AsText(geom) FROM public.ptn_grade_tarefas WHERE cell_oid = %s", (cell_oid,))
+            cur.execute("SELECT ST_AsText(geom) FROM public.ptn_tasks WHERE cell_oid = %s", (cell_oid,))
             row = cur.fetchone()
             return row[0] if row else None
-        except:
+        except Exception:
+            return None
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_cell_bounds_for_tile(self, tile_name):
+        """
+        Bounding box and outer ring of each cell of a tile (only for the selection
+        preview, which draws the ring in the grid projection so cells stay square).
+        """
+        conn = self._project_user_conn('Pantanal', 'Vegetação Secundária')
+        cur = conn.cursor()
+        try:
+            cur.execute("""
+                SELECT cell_oid, ST_XMin(geom), ST_YMin(geom), ST_XMax(geom), ST_YMax(geom),
+                       ST_AsGeoJSON(ST_ExteriorRing(ST_GeometryN(geom, 1)))
+                FROM public.ptn_tasks
+                WHERE tile_2 = %s AND geom IS NOT NULL
+                ORDER BY cell_oid
+            """, (tile_name,))
+            rows = cur.fetchall()
+            out = []
+            for r in rows:
+                try:
+                    ring = json.loads(r[5])['coordinates'] if r[5] else None
+                except (ValueError, KeyError, TypeError):
+                    ring = None
+                out.append({'cell_oid': r[0], 'xmin': r[1], 'ymin': r[2], 'xmax': r[3],
+                            'ymax': r[4], 'ring': ring})
+            return out
+        except Exception:
+            return []
+        finally:
+            cur.close()
+            conn.close()
+
+    def get_tile_boundary(self, tile_name):
+        """Tile geometry as WKT (only for the selection preview)."""
+        conn = self._project_user_conn('Pantanal', 'Vegetação Secundária')
+        cur = conn.cursor()
+        try:
+            cur.execute("SELECT ST_AsText(geom) FROM public.tiles_ptn WHERE tile = %s", (tile_name,))
+            row = cur.fetchone()
+            return row[0] if row else None
+        except Exception:
             return None
         finally:
             cur.close()
@@ -657,7 +707,7 @@ class DBManager:
             cur.execute("SELECT max_scale FROM public.biome_config WHERE bioma = %s", (biome,))
             row = cur.fetchone()
             return {'max_scale': row['max_scale']} if row else {'max_scale': 10000}
-        except:
+        except Exception:
             return {'max_scale': 10000}
         finally:
             cur.close()
@@ -673,7 +723,7 @@ class DBManager:
                 ON CONFLICT (bioma) DO UPDATE SET max_scale = EXCLUDED.max_scale;
             """, (biome, max_scale))
             conn.commit()
-        except:
+        except Exception:
             conn.rollback()
         finally:
             cur.close()
@@ -740,7 +790,7 @@ class DBManager:
             cur.execute("UPDATE public.interpreters SET is_admin = %s WHERE username = %s",
                         (is_admin, username))
             conn.commit()
-        except:
+        except Exception:
             conn.rollback()
         finally:
             cur.close()
@@ -753,7 +803,7 @@ class DBManager:
             cur.execute("UPDATE public.interpreters SET is_auditor = %s WHERE username = %s",
                         (is_auditor, username))
             conn.commit()
-        except:
+        except Exception:
             conn.rollback()
         finally:
             cur.close()
@@ -769,24 +819,8 @@ class DBManager:
                 (username, biome)
             )
             conn.commit()
-        except:
+        except Exception:
             conn.rollback()
-        finally:
-            cur.close()
-            conn.close()
-
-    def get_all_users(self):
-        conn = self._admin_conn()
-        cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
-        try:
-            cur.execute("""
-                SELECT username, nome_completo, bioma_padrao, is_admin, is_auditor, ativo
-                FROM public.interpreters
-                ORDER BY username
-            """)
-            return [dict(row) for row in cur.fetchall()]
-        except:
-            return []
         finally:
             cur.close()
             conn.close()
@@ -825,26 +859,6 @@ class DBManager:
             cur.close()
             conn.close()
 
-    def get_user_polygon_counts(self, biome, project_type):
-        config = self._get_config(biome, project_type)
-        schema, table = config['schema'], config['table']
-        conn = self._project_admin_conn(biome, project_type)
-        cur = conn.cursor()
-        try:
-            cur.execute(f"""
-                SELECT analyst, COUNT(*) as total
-                FROM {schema}.{table}
-                WHERE biome = %s
-                GROUP BY analyst
-                ORDER BY total DESC
-            """, (sanitize_text(biome),))
-            return cur.fetchall()
-        except:
-            return []
-        finally:
-            cur.close()
-            conn.close()
-
     def get_contagem(self, biome, project_type, username=None, tile=None, ecoregion=None, all_interpreters=False):
         config = self._get_config(biome, project_type)
         schema, table = config['schema'], config['table']
@@ -871,7 +885,7 @@ class DBManager:
                 ORDER BY total DESC
             """, params)
             return cur.fetchall()
-        except:
+        except Exception:
             return []
         finally:
             cur.close()
@@ -897,7 +911,7 @@ class DBManager:
             """, (username, sanitize_text(biome)))
             ecos = [r[0] for r in cur.fetchall()]
             return tiles, ecos
-        except:
+        except Exception:
             return [], []
         finally:
             cur.close()
@@ -918,7 +932,7 @@ class DBManager:
                 original = row[0]
                 sanitized = sanitize_text(original)
                 mapping[sanitized] = original
-        except:
+        except Exception:
             pass
         finally:
             cur.close()
@@ -943,21 +957,29 @@ class DBManager:
                     criado_em  TIMESTAMP    DEFAULT NOW()
                 );
             """)
-            cur.execute(f"""
-                SELECT code, label, color
-                FROM {classes_schema}.classes_custom
-                WHERE analyst=%s AND ativo=TRUE
-                ORDER BY ordem, id
-            """, (username,))
-            rows = cur.fetchall()
-            if rows:
-                return [(r[0], r[1], r[2]) for r in rows]
+            conn.commit()
+            # project-wide list (edited by admins/auditors) wins over a personal one
+            for owner in (PROJECT_CLASSES_OWNER, username):
+                cur.execute(f"""
+                    SELECT code, label, color
+                    FROM {classes_schema}.classes_custom
+                    WHERE analyst=%s AND ativo=TRUE
+                    ORDER BY ordem, id
+                """, (owner,))
+                rows = cur.fetchall()
+                if rows:
+                    return [(r[0], r[1], r[2]) for r in rows]
             return list(CLASSES_POR_BIOMA.get((biome, project_type), []))
-        except:
+        except Exception:
             return list(CLASSES_POR_BIOMA.get((biome, project_type), []))
         finally:
             cur.close()
             conn.close()
+
+    def save_project_classes(self, biome, project_type, classes):
+        """Project-wide class list (admins/auditors). Returns (ok, message)."""
+        self.get_custom_classes(biome, project_type, PROJECT_CLASSES_OWNER)  # creates the table
+        return self.save_custom_classes(biome, project_type, PROJECT_CLASSES_OWNER, classes)
 
     def save_custom_classes(self, biome, project_type, username, classes):
         config = self._get_config(biome, project_type)
@@ -989,10 +1011,12 @@ class DBManager:
         uri.setConnection(params['host'], str(params['port']),
                           params['dbname'], params['user_user'], params['user_pass'])
 
+        biome_sql = sanitize_text(biome)
         if filter_by_user:
-            filter_sql = f"analyst = '{username}' AND biome = '{sanitize_text(biome)}'"
+            user_sql = str(username).replace("'", "''")
+            filter_sql = f"analyst = '{user_sql}' AND biome = '{biome_sql}'"
         else:
-            filter_sql = f"biome = '{sanitize_text(biome)}'"
+            filter_sql = f"biome = '{biome_sql}'"
 
         uri.setDataSource(schema, table, 'geom', filter_sql, 'fid')
         uri.setParam('srid', '4674')
@@ -1059,7 +1083,7 @@ class DBManager:
             if biome == 'Pantanal' and project_type == 'Vegetação Secundária':
                 cur.execute("""
                     SELECT g.finished_1
-                    FROM public.ptn_grade_tarefas g, vs_2024.output o
+                    FROM public.ptn_tasks g, vs_2024.output o
                     WHERE o.fid = %s AND ST_Intersects(o.geom, g.geom)
                     LIMIT 1
                 """, (fid,))
@@ -1074,7 +1098,7 @@ class DBManager:
                     pass
                 elif owner != username:
                     return False, 'Você só pode apagar suas próprias amostras.'
-                elif datetime.now().date() - ts > timedelta(days=1):
+                elif ts is None or datetime.now().date() - ts > timedelta(days=1):
                     return False, 'A amostra foi criada há mais de 24 horas e não pode ser apagada.'
 
             cur.execute(f"DELETE FROM {schema}.{table} WHERE fid=%s", (fid,))
@@ -1086,14 +1110,3 @@ class DBManager:
         finally:
             cur.close()
             conn.close()
-
-    def get_pantanal_tiles_layer(self):
-        """Returns the tiles_ptn layer as a QgsVectorLayer (filtering done in the sampler)."""
-        params = self._get_project_conn_params('Pantanal', 'Vegetação Secundária')
-        uri = QgsDataSourceUri()
-        uri.setConnection(params['host'], str(params['port']),
-                          params['dbname'], params['user_user'], params['user_pass'])
-        uri.setDataSource('public', 'tiles_ptn', 'geom', '', 'tile')
-        uri.setParam('srid', '4674')
-        layer = QgsVectorLayer(uri.uri(False), 'Tiles Pantanal VS', 'postgres')
-        return layer

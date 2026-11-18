@@ -1,11 +1,14 @@
 [general]
 name=Sample Design
-qgisMinimumVersion=3.22
+qgisMinimumVersion=3.40
+qgisMaximumVersion=4.99
+supportsQt6=True
 description=Ferramenta interativa para coleta de amostras de uso e cobertura da terra.
-version=0.65
+version=0.76
+changelog=0.76: QGIS 3.40 a 4.x (Qt5 e Qt6); máscaras de referência do NF com contramáscara florestal e hidrografia geral; TerraClass 2024 recortado por tile; imagens de julho de 2026, 2025 e 2024; coleta por ponto, quadrado e polígono; auditores podem reabrir células; mensagens revisadas.
 author=Miguel Alexandre da Cunha
 email=miguel.cunha@inpe.br
-about=Plugin desenvolvido no âmbito do Programa BiomasBR-INPE para coleta interativa de amostras destinadas ao treinamento de modelos de inteligência artificial. As funcionalidades incluem integração ao PostgreSQL/PostGIS, autenticação de usuários, gerenciamento de classes personalizadas e acompanhamento em tempo real, com sincronização por WFS.
+about=Plugin desenvolvido no âmbito do Programa BiomasBR-INPE para coleta interativa de amostras destinadas ao treinamento de modelos de inteligência artificial. As funcionalidades incluem integração ao PostgreSQL/PostGIS, autenticação de usuários, gerenciamento de classes personalizadas e acompanhamento em tempo real, com sincronização via WFS ou por API.
 tracker=
 repository=https://github.com/migualex/sample-design
 homepage=https://github.com/migualex
