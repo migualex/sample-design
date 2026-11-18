@@ -880,8 +880,7 @@ class SamplerDock(QDockWidget):
         is_admin = self.user_info.get('is_admin', False) and not self._is_local_geopackage
         self.btn_manage_users.setVisible(is_admin)
         # class list: administrators and auditors, in every project (API or PostgreSQL)
-        self.btn_manage_classes.setVisible(
-            bool((self.is_admin or self.is_auditor) and not self._is_local_geopackage))
+        self.btn_manage_classes.setVisible(self._can_manage_classes())
 
         # API projects: fixed max scale
         cfg = self._api_cfg() if self._is_api_project() else None
@@ -1144,6 +1143,8 @@ class SamplerDock(QDockWidget):
         if not ok:
             QMessageBox.warning(parent or self, title, msg)
             return False
+        if self.user_info:
+            self.btn_manage_classes.setVisible(self._can_manage_classes())
         self._log(f'API conectada: {url}')
         return True
 
@@ -4309,9 +4310,27 @@ class SamplerDock(QDockWidget):
         if self.user_info:
             self._sync_counts(self.user_info['username'])
 
+    def _can_manage_classes(self):
+        """
+        Administrators and auditors edit the class list. In API projects an auditor is
+        recognised by the profile of his access key ('admin' = administrators and
+        auditors), even when he did not enter in audit mode.
+        """
+        if self._is_local_geopackage or not self.user_info:
+            return False
+        if self.is_admin or self.is_auditor:
+            return True
+        if self._is_api_project():
+            ok, _ = self._vs_key_owner_ok()
+            client = getattr(self.vs_api, 'client', None)
+            if ok and client is not None and client.api_key:
+                who = client.whoami()
+                return bool(who and who[1] == 'admin')
+        return False
+
     def _manage_classes(self):
         """Class editor for administrators and auditors (API or PostgreSQL project)."""
-        if not (self.is_admin or self.is_auditor) or self._is_local_geopackage:
+        if not self._can_manage_classes():
             return
         if self._is_api_project():
             save_fn = self.vs_api.save_classes
