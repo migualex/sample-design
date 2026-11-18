@@ -1,47 +1,55 @@
-# Sample Design
 <p align="center">
-  <img src="https://img.shields.io/badge/License-GPLv3-blue" />
-  <img src="https://img.shields.io/badge/Lifecycle-maturing-green.svg" />
-  <img src="https://img.shields.io/badge/QGIS-3.40%20a%204.x-589632?logo=qgis&logoColor=white" />
+  <img src="icons/sample_design_icon.png" alt="Sample Design" width="140"/>
 </p>
 
-<img src="icons/sample_design_icon.png" align="right" alt="Sample Design" width="120"/>
+<h1 align="center">Sample Design</h1>
 
-<p>Plugin do QGIS para coleta interativa de amostras usadas no treinamento de modelos de inteligência artificial. Trabalha com PostgreSQL/PostGIS na rede interna do INPE ou, fora dela, com a API do projeto, gravando o trabalho em um pacote local (GeoPackage).</p>
+<p align="center">
+  Plugin do QGIS para coleta de amostras de uso e cobertura da terra
+</p>
 
-<p>Foi desenvolvido no âmbito da semiautomatização do PRODES, para coletar amostras em diferentes ecorregiões e treinar a classificação de tiles Sentinel-2 com o pacote <a href="https://e-sensing.github.io/sitsbook/" target="_blank">sits</a>.</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/versão-0.76-2E86C1" />
+  <img src="https://img.shields.io/badge/QGIS-3.40%20a%204.x-589632?logo=qgis&logoColor=white" />
+  <img src="https://img.shields.io/badge/licença-GPLv3-blue" />
+</p>
+
+---
+
+O Sample Design coleta amostras para o treinamento de modelos de classificação de imagens Sentinel-2 com o pacote [sits](https://e-sensing.github.io/sitsbook/). Foi desenvolvido no Programa BiomasBR do INPE, no âmbito da semiautomatização do PRODES.
+
+O plugin funciona com PostgreSQL/PostGIS na rede interna do INPE ou, fora dela, com a API do projeto, gravando o trabalho em um pacote local (GeoPackage).
 
 ## Requisitos
 
-- QGIS 3.40 ou mais recente, incluindo a série 4.x (Qt6).
-- Para a rede interna: biblioteca `psycopg2` (no OSGeo4W Shell: `pip install psycopg2-binary`).
+- QGIS 3.40 ou mais recente, incluindo a série 4.x
+- `psycopg2`, para uso na rede interna
 
 ## Instalação
 
-No QGIS, acesse **Complementos → Gerenciar e Instalar Complementos → Instalar a partir do ZIP** e selecione o arquivo `.zip` do plugin.
+1. Baixe o arquivo `.zip` do plugin.
+2. No QGIS, acesse **Complementos → Gerenciar e Instalar Complementos → Instalar a partir do ZIP**.
+3. Selecione o arquivo e clique em **Instalar complemento**.
 
-## Configuração do banco
+## Configuração
 
-Os dados de conexão com o PostgreSQL (host, usuários e senhas) não ficam no repositório. Copie `db_secrets.example.py` para `db_secrets.py` e preencha os dados. Sem esse arquivo o plugin entra direto no modo API.
+Os dados de conexão com o banco não ficam no repositório. Copie `db_secrets.example.py` para `db_secrets.py` e preencha host, usuários e senhas. Sem esse arquivo, o plugin funciona apenas pela API.
 
-## Como usar
+## Uso
 
-1. Clique no ícone **Sample Design** na barra de ferramentas.
-2. Faça login escolhendo bioma e projeto. Fora da rede interna, informe o endereço da API e a sua chave de acesso.
-3. Em **Selecionar Tile / Células**, escolha o tile e as células da tarefa e onde salvar o pacote de trabalho.
-4. O plugin carrega as imagens Sentinel-2 do BDC (julho de cada ano, com menor cobertura de nuvem), as máscaras de referência e o TerraClass do tile.
-5. Escolha a classe e o modo de desenho (ponto, quadrado pré-definido ou polígono livre) e clique no mapa.
-6. Use a aba **Série temporal** para conferir o comportamento das amostras.
-7. Ao terminar, clique em **Finalizar** para enviar as amostras e liberar as células.
+1. Clique no ícone **Sample Design** e faça login.
+2. Selecione o tile e as células da tarefa.
+3. Escolha a classe e o modo de desenho (ponto, quadrado ou polígono) e colete as amostras no mapa.
+4. Clique em **Finalizar** para enviar as amostras.
 
-Auditores entram com a opção **Entrar como auditor** e podem reabrir células já finalizadas para revisão, sem apagar amostras.
-
-Leia as instruções completas em [MANUAL.md](MANUAL.md).
+O passo a passo completo está no [manual](MANUAL.md).
 
 ## Licença
 
-Este projeto é distribuído sob a licença GNU General Public License v3.0.
+Distribuído sob a [GNU General Public License v3.0](LICENSE.txt).
 
-Você é livre para usar, estudar, modificar e distribuir este software, desde
-que mantenha os avisos de copyright e a licença original em qualquer cópia
-ou trabalho derivado, conforme exigido pela GPL-3.0.
+---
+
+<p align="center">
+  Desenvolvido por Miguel Alexandre da Cunha · Programa BiomasBR · INPE
+</p>
