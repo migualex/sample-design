@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="60 40 900 960" width="120" height="128" role="img" aria-label="Sample Design">
+  <path d="M150 880 L540 420" stroke="#2B2B2B" stroke-width="150" stroke-linecap="round"/>
+  <path d="M150 880 L540 420" stroke="#5A7080" stroke-width="104" stroke-linecap="round"/>
+  <path d="M200 875 L500 520" stroke="#6E8A9B" stroke-width="22" stroke-linecap="round"/>
+  <polygon points="488,80 612,240 785,140 725,325 890,420 690,455 695,660 565,500 395,600 455,415 290,318 480,280" fill="#F5A800" stroke="#2B2B2B" stroke-width="34" stroke-linejoin="miter"/>
+  <circle cx="625" cy="170" r="26" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.0s" repeatCount="indefinite"/></circle>
+  <circle cx="435" cy="240" r="24" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.6s" repeatCount="indefinite"/></circle>
+  <circle cx="780" cy="300" r="26" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="1.2s" repeatCount="indefinite"/></circle>
+  <circle cx="400" cy="438" r="24" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="1.8s" repeatCount="indefinite"/></circle>
+  <circle cx="745" cy="500" r="24" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.3s" repeatCount="indefinite"/></circle>
+  <circle cx="555" cy="568" r="24" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.9s" repeatCount="indefinite"/></circle>
+</svg>

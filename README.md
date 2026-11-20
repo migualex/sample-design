@@ -1,9 +1,4 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
-    <img src="assets/banner-light.svg" alt="Sample Design: coleta de amostras de uso e cobertura da terra no QGIS" width="460">
-  </picture>
-</p>
+# Sample Design
 
 <p align="center">
   <img src="https://img.shields.io/badge/versão-0.76-F5A800" />
@@ -11,7 +6,7 @@
   <img src="https://img.shields.io/badge/licença-GPLv3-5A7080" />
 </p>
 
----
+<img src="assets/wand.svg" align="right" alt="Sample Design" width="120"/>
 
 O Sample Design coleta amostras para o treinamento de modelos de classificação de imagens Sentinel-2 com o pacote [sits](https://e-sensing.github.io/sitsbook/). Foi desenvolvido no Programa BiomasBR do INPE, no âmbito da semiautomatização do PRODES.
 
