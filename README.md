@@ -1,7 +1,9 @@
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
-  <img src="assets/banner-light.svg" alt="Sample Design: coleta de amostras de uso e cobertura da terra no QGIS" width="100%">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+    <img src="assets/banner-light.svg" alt="Sample Design: coleta de amostras de uso e cobertura da terra no QGIS" width="460">
+  </picture>
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/versão-0.76-F5A800" />

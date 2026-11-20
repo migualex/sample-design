@@ -1,32 +1,12 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 300" width="1000" height="300" role="img" aria-label="Sample Design">
-  <defs>
-    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#F5A800" stop-opacity="0.45"/><stop offset="1" stop-color="#F5A800" stop-opacity="0"/>
-    </radialGradient>
-  </defs>
-  <g transform="translate(30 18) scale(0.258)">
-    <circle cx="590" cy="370" r="330" fill="url(#glow)">
-      <animate attributeName="opacity" values="0.55;1;0.55" dur="2.4s" repeatCount="indefinite"/>
-    </circle>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 120" width="560" height="120" role="img" aria-label="Sample Design">
+  <g transform="translate(6 6) scale(0.105)">
     <path d="M150 880 L540 420" stroke="#2B2B2B" stroke-width="150" stroke-linecap="round"/>
     <path d="M150 880 L540 420" stroke="#5A7080" stroke-width="104" stroke-linecap="round"/>
-    <path d="M200 875 L500 520" stroke="#6E8A9B" stroke-width="22" stroke-linecap="round"/>
-    <polygon points="488,80 612,240 785,140 725,325 890,420 690,455 695,660 565,500 395,600 455,415 290,318 480,280" fill="#F5A800" stroke="#2B2B2B" stroke-width="34" stroke-linejoin="miter"/>
-    <g>
-      <circle cx="625" cy="170" r="26" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.0s" repeatCount="indefinite"/><animate attributeName="r" values="16;26;16" dur="2.4s" begin="0.0s" repeatCount="indefinite"/></circle>
-      <circle cx="435" cy="240" r="24" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.5s" repeatCount="indefinite"/><animate attributeName="r" values="14;24;14" dur="2.4s" begin="0.5s" repeatCount="indefinite"/></circle>
-      <circle cx="780" cy="300" r="26" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="1.0s" repeatCount="indefinite"/><animate attributeName="r" values="16;26;16" dur="2.4s" begin="1.0s" repeatCount="indefinite"/></circle>
-      <circle cx="400" cy="438" r="24" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="1.5s" repeatCount="indefinite"/><animate attributeName="r" values="14;24;14" dur="2.4s" begin="1.5s" repeatCount="indefinite"/></circle>
-      <circle cx="745" cy="500" r="24" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.25s" repeatCount="indefinite"/><animate attributeName="r" values="14;24;14" dur="2.4s" begin="0.25s" repeatCount="indefinite"/></circle>
-      <circle cx="555" cy="568" r="24" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.75s" repeatCount="indefinite"/><animate attributeName="r" values="14;24;14" dur="2.4s" begin="0.75s" repeatCount="indefinite"/></circle>
-      <circle cx="905" cy="175" r="16" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="1.25s" repeatCount="indefinite"/><animate attributeName="r" values="10;16;10" dur="2.4s" begin="1.25s" repeatCount="indefinite"/></circle>
-      <circle cx="330" cy="150" r="14" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="1.75s" repeatCount="indefinite"/><animate attributeName="r" values="8;14;8" dur="2.4s" begin="1.75s" repeatCount="indefinite"/></circle>
-      <circle cx="965" cy="330" r="12" fill="#F5A800" opacity="0.3"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.6s" repeatCount="indefinite"/><animate attributeName="r" values="7;12;7" dur="2.4s" begin="0.6s" repeatCount="indefinite"/></circle>
-    </g>
+    <polygon points="488,80 612,240 785,140 725,325 890,420 690,455 695,660 565,500 395,600 455,415 290,318 480,280" fill="#F5A800" stroke="#2B2B2B" stroke-width="40" stroke-linejoin="miter"/>
+    <circle cx="625" cy="170" r="30" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.0s" repeatCount="indefinite"/></circle><circle cx="435" cy="240" r="28" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.6s" repeatCount="indefinite"/></circle><circle cx="780" cy="300" r="30" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="1.2s" repeatCount="indefinite"/></circle><circle cx="400" cy="438" r="28" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="1.8s" repeatCount="indefinite"/></circle><circle cx="745" cy="500" r="28" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.3s" repeatCount="indefinite"/></circle><circle cx="555" cy="568" r="28" fill="#F5A800"><animate attributeName="opacity" values="0.15;1;0.15" dur="2.4s" begin="0.9s" repeatCount="indefinite"/></circle>
   </g>
   <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
-    <text x="330" y="150" font-size="76" font-weight="700" fill="#1C2B39" letter-spacing="-1">Sample Design</text>
-    <rect x="335" y="174" width="72" height="7" rx="3.5" fill="#F5A800"/>
-    <text x="332" y="226" font-size="25" fill="#5B6B78">Coleta de amostras de uso e cobertura da terra no QGIS</text>
+    <text x="128" y="64" font-size="42" font-weight="600" fill="#1C2B39" letter-spacing="-0.5">Sample Design</text>
+    <text x="129" y="94" font-size="16" fill="#6B7884">Coleta de amostras de uso e cobertura da terra no QGIS</text>
   </g>
 </svg>
